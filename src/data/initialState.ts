@@ -6,6 +6,7 @@ import { PARTIES } from './parties';
 import { REGIONS } from './regions';
 import { MEDIA_OUTLETS } from './media';
 import { COUNTRIES } from './countries';
+import { COMPANIES } from './companies';
 import { INTL_ORGS } from './intlOrgs';
 import { MINISTRY_NAMES, MINISTRY_LIST } from './ministries';
 import { INITIAL_JUDICIARY } from './judiciary';
@@ -383,7 +384,7 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
   };
 
   return {
-    version: 5,
+    version: 6,
     createdAt: new Date().toISOString(),
     president: p,
     clock: { currentDate: date, daysInOffice: 0, turnNumber: 1, speed: 'paused' },
@@ -393,6 +394,7 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
     social: buildSocial(),
     security: buildSecurity(),
     countries: COUNTRIES,
+    companies: COMPANIES,
     intlOrgs: INTL_ORGS,
     international: { ...INITIAL_INTERNATIONAL },
     assembly: buildAssembly(p.party),

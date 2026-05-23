@@ -726,6 +726,7 @@ export interface GameState {
   social: SocialState;
   security: SecurityState;
   countries: Country[];
+  companies: import('../data/companies').Company[];
   intlOrgs: IntlOrg[];
   international: InternationalContext;
   assembly: AssemblyState;

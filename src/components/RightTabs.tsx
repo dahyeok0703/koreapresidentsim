@@ -20,6 +20,7 @@ const TABS = [
   { id: 'JUDICIARY',    label: '사법부',   icon: '⚖️' },
   { id: 'REGIONS',      label: '행정구역', icon: '🗺️' },
   { id: 'INFRA',        label: '토건',     icon: '🏗️' },
+  { id: 'COMPANIES',    label: '기업',     icon: '🏭' },
   { id: 'EVENTS',       label: '사건',     icon: '📜' },
   { id: 'INTL',         label: '국제',     icon: '🌍' },
   { id: 'MEDIA',        label: '언론',     icon: '📰' },
@@ -56,6 +57,7 @@ export default function RightTabs() {
         {tab === 'JUDICIARY' && <JudiciaryTab />}
         {tab === 'REGIONS'   && <RegionsTab />}
         {tab === 'INFRA'     && <InfraTab />}
+        {tab === 'COMPANIES' && <CompaniesTab />}
         {tab === 'EVENTS'    && <EventsTab />}
         {tab === 'INTL'      && <IntlTab />}
         {tab === 'MEDIA'     && <MediaTab />}
@@ -1169,6 +1171,90 @@ function InfraTab() {
             </div>
           ))}
         </div>
+      </Panel>
+    </>
+  );
+}
+
+// ============ 기업 ============
+function CompaniesTab() {
+  const companies = useGame(s => s.state!.companies);
+  const [sector, setSector] = useState<string>('ALL');
+  const [filter, setFilter] = useState('');
+  const [pickedRank, setPicked] = useState<number | null>(1);
+
+  const sectors = Array.from(new Set(companies.map(c => c.sector)));
+  const list = companies
+    .filter(c => sector === 'ALL' || c.sector === sector)
+    .filter(c => !filter || c.name.includes(filter) || c.ceo.includes(filter));
+  const picked = companies.find(c => c.rank === pickedRank);
+  const totalMcap = companies.reduce((a, c) => a + c.marketCapKRW, 0);
+
+  return (
+    <>
+      <Panel title={`기업 시가총액 순위 (${list.length}/${companies.length}) · 합산 ₩${fmtInt(totalMcap)}조`}>
+        <div className="flex gap-1 flex-wrap mb-2">
+          <button onClick={() => setSector('ALL')} className={`text-[10px] px-1.5 py-0.5 rounded ${sector === 'ALL' ? 'bg-blue-700 text-white' : 'bg-slate-800 text-slate-300'}`}>전체</button>
+          {sectors.map(s => (
+            <button key={s} onClick={() => setSector(s)} className={`text-[10px] px-1.5 py-0.5 rounded ${sector === s ? 'bg-blue-700 text-white' : 'bg-slate-800 text-slate-300'}`}>{s}</button>
+          ))}
+        </div>
+        <input className="input w-full text-xs mb-2" placeholder="기업명·CEO 검색" value={filter} onChange={e => setFilter(e.target.value)} />
+        <div className="space-y-1 max-h-[420px] overflow-y-auto pr-1">
+          {list.map(c => (
+            <button key={c.rank} onClick={() => setPicked(c.rank)}
+              className={`w-full text-left bg-slate-950/40 border rounded p-1.5 hover:border-blue-500 transition-colors ${pickedRank === c.rank ? 'border-blue-500' : 'border-slate-800'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[10px] font-mono text-slate-500 w-7 shrink-0 text-right">{c.rank}.</span>
+                  <span className="text-xs font-semibold text-slate-100 truncate">{c.name}</span>
+                  <Chip>{c.sector}</Chip>
+                </div>
+                <span className="text-[11px] font-mono text-amber-300 shrink-0">₩{c.marketCapKRW}조</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </Panel>
+
+      {picked && (
+        <Panel title={`${picked.name} 상세`}>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
+            <Stat label="순위"      value={`${picked.rank}위`} />
+            <Stat label="시가총액"  value={`₩${picked.marketCapKRW}조`} color="text-amber-300" />
+            <Stat label="섹터"      value={picked.sector} />
+            <Stat label="상장"      value={picked.listed} />
+            {picked.ticker && <Stat label="종목코드"  value={picked.ticker} />}
+            <Stat label="설립"      value={`${picked.founded}년`} />
+            <Stat label="본사"      value={picked.hq} />
+            <Stat label="대표"      value={picked.ceo} />
+            <Stat label="임직원"    value={`${fmtInt(picked.employees)}명`} />
+          </div>
+          <div className="mt-2 text-[10px] text-slate-500">회사 개요</div>
+          <div className="text-[11px] text-slate-200 leading-relaxed">{picked.description}</div>
+          <div className="mt-2 text-[10px] text-slate-500">최근 투자·이슈</div>
+          <ul className="text-[11px] text-slate-300 space-y-0.5">
+            {picked.recentMoves.map((m, i) => <li key={i}>· {m}</li>)}
+          </ul>
+        </Panel>
+      )}
+
+      <Panel title="섹터별 합산 시가총액">
+        {(() => {
+          const bySector: Record<string, number> = {};
+          for (const c of companies) bySector[c.sector] = (bySector[c.sector] ?? 0) + c.marketCapKRW;
+          const sorted = Object.entries(bySector).sort((a, b) => b[1] - a[1]);
+          const max = sorted[0]?.[1] ?? 1;
+          return sorted.map(([s, v]) => (
+            <div key={s} className="flex items-center gap-2 text-xs mb-0.5">
+              <span className="w-28 truncate text-slate-300">{s}</span>
+              <div className="flex-1 bar-bg h-2">
+                <div className="bar-fill bg-amber-500" style={{ width: `${(v / max) * 100}%` }} />
+              </div>
+              <span className="w-16 text-right font-mono text-amber-300">₩{v}조</span>
+            </div>
+          ));
+        })()}
       </Panel>
     </>
   );
