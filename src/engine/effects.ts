@@ -1,6 +1,31 @@
 import type { GameState, PartialEffects, ApprovalBreakdown, Bill, GameEvent } from '../types/game';
+import type { Sector } from '../data/companies';
 import { ALL_BILL_TEMPLATES, AUTONOMOUS_ACTIONS } from '../data/bills';
 import { genId } from '../utils/id';
+
+// 섹터별 코스피 베타 (시장 대비 변동성)
+const SECTOR_BETA: Record<Sector, number> = {
+  '반도체':            1.35,
+  '전자·디스플레이':   1.10,
+  '2차전지':           1.50,
+  '자동차':            1.00,
+  '조선·해양':         1.25,
+  '철강·소재':         1.05,
+  '화학·에너지':       1.10,
+  '바이오·제약':       1.45,
+  '인터넷·게임':       1.30,
+  '금융·증권·보험':    0.80,
+  '통신':              0.55,
+  '유통·소비재':       0.85,
+  '식품·외식':         0.70,
+  '엔터·콘텐츠':       1.35,
+  '건설·인프라':       1.05,
+  '항공·운송':         1.15,
+  '방산·항공우주':     1.20,
+  '공기업':            0.50,
+  '핀테크·스타트업':   0.95,
+  '미디어':            0.75,
+};
 
 function clamp(v: number, lo = 0, hi = 100): number {
   return Math.max(lo, Math.min(hi, v));
@@ -194,6 +219,23 @@ function advanceOneDay(state: GameState): GameState {
       { date: newDate, gdp: e.gdpGrowth, cpi: e.inflation, unemp: e.unemployment, kospi: e.kospi, fxUsdKrw: e.fxUsdKrw },
     ];
   }
+  // === 기업 시가총액 실시간 변동 ===
+  // 코스피 일간 변동률 = (kospi_new - kospi_old) / kospi_old
+  const kospiBefore = state.economy.kospi;
+  const kospiDelta = (e.kospi - kospiBefore) / kospiBefore;  // 보통 -0.02 ~ +0.02
+  let updatedCompanies = s.companies.map(c => {
+    const beta = SECTOR_BETA[c.sector] ?? 1.0;
+    // 섹터 베타 × 코스피 변동 + 개별 노이즈
+    const idiosyncratic = (Math.random() - 0.5) * 0.018;     // ±0.9% 개별 노이즈
+    const pct = kospiDelta * beta + idiosyncratic;
+    const newCap = Math.max(0.1, c.marketCapKRW * (1 + pct));
+    return { ...c, marketCapKRW: Math.round(newCap * 100) / 100 };
+  });
+  // 시가총액 기준 재랭킹
+  updatedCompanies.sort((a, b) => b.marketCapKRW - a.marketCapKRW);
+  updatedCompanies = updatedCompanies.map((c, i) => ({ ...c, rank: i + 1 }));
+  s.companies = updatedCompanies;
+
   s.economy = e;
 
   // === 지지율 회귀 + 노이즈 ===

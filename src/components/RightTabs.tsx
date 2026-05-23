@@ -1192,7 +1192,7 @@ function CompaniesTab() {
 
   return (
     <>
-      <Panel title={`기업 시가총액 순위 (${list.length}/${companies.length}) · 합산 ₩${fmtInt(totalMcap)}조`}>
+      <Panel title={`기업 시가총액 순위 (${list.length}/${companies.length}) · 합산 ₩${fmtInt(totalMcap)}조`} right={<span className="text-[10px] text-emerald-300">⏱ 실시간</span>}>
         <div className="flex gap-1 flex-wrap mb-2">
           <button onClick={() => setSector('ALL')} className={`text-[10px] px-1.5 py-0.5 rounded ${sector === 'ALL' ? 'bg-blue-700 text-white' : 'bg-slate-800 text-slate-300'}`}>전체</button>
           {sectors.map(s => (
@@ -1210,7 +1210,7 @@ function CompaniesTab() {
                   <span className="text-xs font-semibold text-slate-100 truncate">{c.name}</span>
                   <Chip>{c.sector}</Chip>
                 </div>
-                <span className="text-[11px] font-mono text-amber-300 shrink-0">₩{c.marketCapKRW}조</span>
+                <span className="text-[11px] font-mono text-amber-300 shrink-0">₩{fmtNum(c.marketCapKRW, 1)}조</span>
               </div>
             </button>
           ))}
@@ -1221,7 +1221,7 @@ function CompaniesTab() {
         <Panel title={`${picked.name} 상세`}>
           <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
             <Stat label="순위"      value={`${picked.rank}위`} />
-            <Stat label="시가총액"  value={`₩${picked.marketCapKRW}조`} color="text-amber-300" />
+            <Stat label="시가총액"  value={`₩${fmtNum(picked.marketCapKRW, 1)}조`} color="text-amber-300" />
             <Stat label="섹터"      value={picked.sector} />
             <Stat label="상장"      value={picked.listed} />
             {picked.ticker && <Stat label="종목코드"  value={picked.ticker} />}
@@ -1251,7 +1251,7 @@ function CompaniesTab() {
               <div className="flex-1 bar-bg h-2">
                 <div className="bar-fill bg-amber-500" style={{ width: `${(v / max) * 100}%` }} />
               </div>
-              <span className="w-16 text-right font-mono text-amber-300">₩{v}조</span>
+              <span className="w-16 text-right font-mono text-amber-300">₩{fmtNum(v, 0)}조</span>
             </div>
           ));
         })()}

@@ -10,11 +10,11 @@ import { COMPANIES } from './companies';
 import { INTL_ORGS } from './intlOrgs';
 import { MINISTRY_NAMES, MINISTRY_LIST } from './ministries';
 import { INITIAL_JUDICIARY } from './judiciary';
-import { INITIAL_SNS } from './sns';
+import { buildInitialSns } from './sns';
 import { INITIAL_INTERNATIONAL } from './international';
 import { INITIAL_BUILDINGS } from './buildings';
 import { INITIAL_WEAPONS, INITIAL_BASES, INITIAL_UNITS } from './military';
-import { INITIAL_ARTICLES } from './articles';
+import { buildInitialArticles } from './articles';
 import { ADMIN_BODIES, INITIAL_ADMIN_TASKS, NOMINEE_POOL } from './adminBodies';
 import { genId, randomKoreanName } from '../utils/id';
 export { genId, randomKoreanName };
@@ -384,7 +384,7 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
   };
 
   return {
-    version: 6,
+    version: 7,
     createdAt: new Date().toISOString(),
     president: p,
     clock: { currentDate: date, daysInOffice: 0, turnNumber: 1, speed: 'paused' },
@@ -403,9 +403,15 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
     cabinet: buildEmptyCabinet(date),
     adminTasks: buildAdminTasks(date),
     buildings: INITIAL_BUILDINGS,
-    media: MEDIA_OUTLETS.map(m => ({ ...m })),
-    articles: INITIAL_ARTICLES,
-    sns: { ...INITIAL_SNS },
+    media: MEDIA_OUTLETS.map(m => ({
+      ...m,
+      // 매체 성향(bias)이 대통령 이념과 가까울수록 호의도 ↑
+      // bias × pres.ideology > 0이면 같은 방향 → 비호의 (음수와 음수 → 양수)
+      // 실제론 반대 부호 매칭이 호의 → -m.bias × p.ideology / 100
+      favorToPresident: Math.round(-m.bias * p.ideology / 100),
+    })),
+    articles: buildInitialArticles(p.ideology),
+    sns: buildInitialSns(p.ideology),
     events: [inaugurationEvent, cabinetEvent],
     chat: [{
       id: genId('msg'),
