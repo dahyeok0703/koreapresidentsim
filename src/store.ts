@@ -44,7 +44,11 @@ export const useGame = create<UIState>((set, get) => ({
 
   hydrate() {
     const s = loadCurrent();
-    if (s) set({ state: s });
+    if (s && (s.version ?? 0) >= 2) set({ state: s });
+    else if (s) {
+      // 구버전 저장 — 무시하고 setup 으로
+      localStorage.removeItem('kps-current');
+    }
   },
 
   reset() {

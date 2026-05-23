@@ -1,6 +1,7 @@
 import type { Party } from '../types/game';
 
-// 22대 국회 의석 (2024.04 총선 결과 기준 + 분당 반영)
+// 22대 국회 (2024.04 총선) + 2025년 초 분당/이합집산 반영
+// 2025-06-04 기준 의석수
 export const PARTIES: Party[] = [
   {
     id: 'DPK',
@@ -9,8 +10,10 @@ export const PARTIES: Party[] = [
     color: '#152484',
     ideology: -35,
     seats: 170,
-    supportRate: 42,
-    description: '대한민국의 중도진보 정당. 원내 제1당.',
+    supportRate: 43,
+    leader: '박찬대',
+    founded: '2014',
+    description: '대한민국의 중도진보 정당. 22대 국회 원내 제1당.',
   },
   {
     id: 'PPP',
@@ -19,28 +22,34 @@ export const PARTIES: Party[] = [
     color: '#E61E2B',
     ideology: 55,
     seats: 108,
-    supportRate: 32,
-    description: '대한민국의 보수 정당. 원내 제2당.',
+    supportRate: 30,
+    leader: '권영세 (비대위)',
+    founded: '2020',
+    description: '대한민국의 보수 정당. 22대 국회 원내 제2당. 윤석열 탄핵 이후 비대위 체제.',
   },
   {
     id: 'RKP',
     name: '조국혁신당',
     shortName: '혁신',
     color: '#06275E',
-    ideology: -50,
+    ideology: -55,
     seats: 12,
     supportRate: 6,
-    description: '검찰개혁·반윤 노선의 진보 정당.',
+    leader: '조국',
+    founded: '2024',
+    description: '검찰개혁·반윤 노선의 진보 정당. 비례 12석.',
   },
   {
     id: 'PRP',
     name: '개혁신당',
     shortName: '개혁',
     color: '#FF7920',
-    ideology: 20,
+    ideology: 25,
     seats: 3,
     supportRate: 4,
-    description: '중도·실용 노선의 신당.',
+    leader: '이준석',
+    founded: '2024',
+    description: '이준석 주도의 중도·실용 보수 신당.',
   },
   {
     id: 'JP',
@@ -50,6 +59,8 @@ export const PARTIES: Party[] = [
     ideology: -75,
     seats: 3,
     supportRate: 2,
+    leader: '윤희숙',
+    founded: '2020',
     description: '노동·민중 중심의 진보정당.',
   },
   {
@@ -60,7 +71,9 @@ export const PARTIES: Party[] = [
     ideology: -10,
     seats: 1,
     supportRate: 1,
-    description: '중도 빅텐트 지향 신당.',
+    leader: '김종민',
+    founded: '2024',
+    description: '중도 빅텐트를 지향하는 신당.',
   },
   {
     id: 'BPK',
@@ -70,7 +83,21 @@ export const PARTIES: Party[] = [
     ideology: -40,
     seats: 1,
     supportRate: 1,
+    leader: '용혜인',
+    founded: '2020',
     description: '기본소득 의제 중심 정당.',
+  },
+  {
+    id: 'SDP',
+    name: '사회민주당',
+    shortName: '사민',
+    color: '#F58220',
+    ideology: -50,
+    seats: 1,
+    supportRate: 1,
+    leader: '한창민',
+    founded: '2024',
+    description: '사회민주주의 노선 신당.',
   },
   {
     id: 'IND',
@@ -78,8 +105,10 @@ export const PARTIES: Party[] = [
     shortName: '무소속',
     color: '#777777',
     ideology: 0,
-    seats: 2,
+    seats: 1,
     supportRate: 1,
-    description: '무소속 의원들.',
+    leader: '-',
+    founded: '-',
+    description: '무소속 의원.',
   },
 ];
