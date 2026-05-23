@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-slate-950 text-slate-100;
+    font-feature-settings: "tnum";
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { @apply bg-slate-700 rounded; }
+  ::-webkit-scrollbar-track { @apply bg-slate-900; }
+}
+
+@layer components {
+  .panel {
+    @apply bg-slate-900/60 border border-slate-800 rounded-lg p-3 shadow-inner;
+  }
+  .panel-title {
+    @apply text-[11px] uppercase tracking-widest text-slate-400 mb-2 flex items-center justify-between;
+  }
+  .stat-num {
+    @apply font-mono tabular-nums;
+  }
+  .chip {
+    @apply text-[10px] px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800/60 text-slate-300;
+  }
+  .btn {
+    @apply px-3 py-1.5 rounded border border-slate-700 bg-slate-800 hover:bg-slate-700 text-sm transition-colors;
+  }
+  .btn-primary {
+    @apply px-3 py-1.5 rounded bg-rok-blue hover:bg-blue-700 text-white text-sm transition-colors border border-blue-900;
+  }
+  .btn-danger {
+    @apply px-3 py-1.5 rounded bg-rok-red hover:bg-red-700 text-white text-sm transition-colors border border-red-900;
+  }
+  .input {
+    @apply bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-500;
+  }
+}
+
+.bar-bg { @apply bg-slate-800 rounded overflow-hidden; }
+.bar-fill { @apply h-full transition-all duration-500; }
