@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PARTIES } from '../data/parties';
 import { createInitialState } from '../data/initialState';
 import { useGame } from '../store';
+import { listSaves, loadSlot, deleteSlot, type SaveSlot } from '../db/storage';
 import type { PartyId, PresidentProfile, EducationEntry, CareerEntry } from '../types/game';
 
 const PRESETS: Partial<PresidentProfile>[] = [
@@ -58,6 +59,29 @@ const PRESETS: Partial<PresidentProfile>[] = [
 
 export default function SetupScreen() {
   const init = useGame(s => s.init);
+  const [savedSlots, setSavedSlots] = useState<SaveSlot[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(true);
+  const [createMode, setCreateMode] = useState(false);
+
+  const refresh = async () => {
+    try {
+      const list = await listSaves();
+      setSavedSlots(list.filter(s => (s.state.version ?? 0) >= 12));
+    } catch {/* ignore */}
+    finally { setSlotsLoading(false); }
+  };
+  useEffect(() => { refresh(); }, []);
+
+  const handleLoad = async (id: string) => {
+    const slot = await loadSlot(id);
+    if (slot) init(slot.state);
+  };
+  const handleDelete = async (id: string) => {
+    if (!confirm('이 저장 슬롯을 삭제하시겠습니까?')) return;
+    await deleteSlot(id);
+    refresh();
+  };
+
   const [p, setP] = useState<PresidentProfile>({
     ...(PRESETS[0] as PresidentProfile),
     inauguratedAt: '2025-06-04',
@@ -111,6 +135,51 @@ export default function SetupScreen() {
           <p className="text-sm text-slate-400">2025년 6월 4일, 당신은 대한민국 제21대 대통령으로 취임합니다.</p>
         </header>
 
+        {/* === 저장된 게임 불러오기 === */}
+        <div className="border border-slate-700 rounded p-3 bg-slate-950/60">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-emerald-300">💾 저장된 게임 불러오기</h3>
+            <button onClick={refresh} className="text-[10px] text-blue-300 hover:text-blue-200">새로고침</button>
+          </div>
+          {slotsLoading ? (
+            <div className="text-[11px] text-slate-500 text-center py-2">로딩 중...</div>
+          ) : savedSlots.length === 0 ? (
+            <div className="text-[11px] text-slate-500 text-center py-2">
+              저장된 게임이 없습니다. 새 게임을 시작하고 상단 "저장/불러오기" 버튼으로 저장하세요.
+            </div>
+          ) : (
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {savedSlots.map(s => (
+                <div key={s.id} className="bg-slate-900/60 border border-slate-800 rounded p-2 flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-slate-100 truncate">{s.name}</div>
+                    <div className="text-[10px] text-slate-400">
+                      {s.state.president.name} · 제{s.state.president.termNumber}대 · {s.state.clock.currentDate}
+                      <span className="mx-1">·</span>
+                      지지율 <span className="text-emerald-300 font-mono">{s.state.approval.overall.toFixed(1)}%</span>
+                      <span className="mx-1">·</span>
+                      <span className="text-slate-500">저장 {new Date(s.updatedAt).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => handleLoad(s.id)} className="btn-primary text-[10px] py-1 px-2">▶ 이어하기</button>
+                    <button onClick={() => handleDelete(s.id)} className="btn-danger text-[10px] py-1 px-2">×</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* === 새 게임 시작 토글 === */}
+        <div className="text-center">
+          <button onClick={() => setCreateMode(!createMode)}
+            className={`text-sm px-4 py-2 rounded border ${createMode ? 'border-slate-600 bg-slate-800 text-slate-300' : 'border-blue-600 bg-blue-900/40 text-blue-200'}`}>
+            {createMode ? '▲ 캐릭터 생성 접기' : '＋ 새 게임 — 캐릭터 생성하기'}
+          </button>
+        </div>
+
+        {createMode && (<>
         <div className="flex justify-center gap-2">
           <span className="text-xs text-slate-400 self-center">프리셋:</span>
           <button onClick={() => usePreset(0)} className="btn text-xs">진보 후보 (이정민)</button>
@@ -317,6 +386,7 @@ export default function SetupScreen() {
         <button onClick={start} className="btn-primary w-full text-base py-3">
           🇰🇷 취임 선서 — 게임 시작
         </button>
+        </>)}
       </div>
     </div>
   );

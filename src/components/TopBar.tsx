@@ -1,6 +1,6 @@
 import { useGame } from '../store';
 import { useState } from 'react';
-import { Settings as SettingsIcon, Save, RotateCcw, PlayCircle, FastForward } from 'lucide-react';
+import { Settings as SettingsIcon, Save, RotateCcw, PlayCircle, FastForward, Undo2 } from 'lucide-react';
 import SettingsModal from './SettingsModal';
 import SaveLoadModal from './SaveLoadModal';
 
@@ -9,6 +9,8 @@ export default function TopBar() {
   const nextTurn = useGame(s => s.nextTurn);
   const busy = useGame(s => s.busy);
   const reset = useGame(s => s.reset);
+  const undo = useGame(s => s.undo);
+  const undoStackLen = useGame(s => s.undoStack.length);
   const [showSettings, setShowSettings] = useState(false);
   const [showSaves, setShowSaves] = useState(false);
 
@@ -48,6 +50,11 @@ export default function TopBar() {
           <FastForward size={14} /> 1개월
         </button>
         <div className="w-px h-5 bg-slate-700 mx-1" />
+        <button onClick={undo} disabled={undoStackLen === 0 || !!busy}
+          className="btn flex items-center gap-1 text-xs disabled:opacity-30"
+          title={`${undoStackLen}회 되돌리기 가능`}>
+          <Undo2 size={14} /> 되돌리기 {undoStackLen > 0 && <span className="text-[10px] text-amber-300">({undoStackLen})</span>}
+        </button>
         <button onClick={() => setShowSaves(true)} className="btn flex items-center gap-1 text-xs">
           <Save size={14} /> 저장/불러오기
         </button>

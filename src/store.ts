@@ -18,10 +18,15 @@ interface UIState {
   busy: string | null;
   error: string | null;
   selectedEventId: string | null;
+  undoStack: GameState[];
   init: (state: GameState) => void;
   hydrate: () => void;
   reset: () => void;
   patch: (updater: (s: GameState) => GameState) => void;
+  patchNoUndo: (updater: (s: GameState) => GameState) => void;
+  pushUndo: () => void;
+  undo: () => void;
+  canUndo: () => boolean;
   setSettings: (partial: Partial<GameState['settings']>) => void;
   pushChat: (msg: Omit<ChatMessage, 'id' | 'timestamp' | 'realTimestamp'>) => void;
 
@@ -82,27 +87,53 @@ export const useGame = create<UIState>((set, get) => ({
   busy: null,
   error: null,
   selectedEventId: null,
+  undoStack: [],
 
-  init(state) { set({ state }); saveCurrent(state); },
+  init(state) { set({ state, undoStack: [] }); saveCurrent(state); },
 
   hydrate() {
     const s = loadCurrent();
-    if (s && (s.version ?? 0) >= 12) set({ state: s });
+    if (s && (s.version ?? 0) >= 12) set({ state: s, undoStack: [] });
     else if (s) { localStorage.removeItem('kps-current'); }
   },
 
   reset() {
     localStorage.removeItem('kps-current');
-    set({ state: null, selectedEventId: null, error: null });
+    set({ state: null, selectedEventId: null, error: null, undoStack: [] });
   },
 
   patch(updater) {
     const s = get().state;
     if (!s) return;
     const next = updater(s);
+    // 자동 undo 스냅샷 (최대 25개)
+    set({ state: next, undoStack: [s, ...get().undoStack].slice(0, 25) });
+    saveCurrent(next);
+  },
+
+  patchNoUndo(updater) {
+    const s = get().state;
+    if (!s) return;
+    const next = updater(s);
     set({ state: next });
     saveCurrent(next);
   },
+
+  pushUndo() {
+    const s = get().state;
+    if (!s) return;
+    set({ undoStack: [s, ...get().undoStack].slice(0, 25) });
+  },
+
+  undo() {
+    const stack = get().undoStack;
+    if (stack.length === 0) return;
+    const [prev, ...rest] = stack;
+    set({ state: prev, undoStack: rest, selectedEventId: null, error: null });
+    saveCurrent(prev);
+  },
+
+  canUndo() { return get().undoStack.length > 0; },
 
   setSettings(partial) {
     get().patch(s => ({ ...s, settings: { ...s.settings, ...partial } }));
@@ -188,7 +219,8 @@ export const useGame = create<UIState>((set, get) => ({
   async nextTurn(days = 7) {
     const s = get().state;
     if (!s) return;
-    set({ busy: `${days}일 진행 중…`, error: null });
+    // undo 스냅샷
+    set({ busy: `${days}일 진행 중…`, error: null, undoStack: [s, ...get().undoStack].slice(0, 25) });
     try {
       const next = await advanceTurn(s, days);
       set({ state: next });
@@ -569,7 +601,7 @@ export const useGame = create<UIState>((set, get) => ({
     const s = get().state;
     if (!s) return;
     const next = buildNewTermState(s, profile);
-    set({ state: next });
+    set({ state: next, undoStack: [] });
     saveCurrent(next);
   },
 
