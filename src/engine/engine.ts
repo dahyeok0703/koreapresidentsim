@@ -48,10 +48,10 @@ export async function evaluateDecision(
     apiKey: state.settings.openaiApiKey,
     model: state.settings.model,
     temperature: 0.75,
-    maxTokens: 900,
+    maxTokens: 3000,
     messages: [
       { role: 'system', content: buildDecisionSystemPrompt(state) },
-      { role: 'user', content: `대통령의 결정/지시:\n"""${decision}"""\n\n위 결정의 결과를 JSON으로 산출하라.` },
+      { role: 'user', content: `대통령의 결정/지시:\n"""${decision}"""\n\n위 결정의 결과를 JSON으로 산출하라. JSON은 반드시 완결된 형태여야 한다 (모든 괄호·따옴표 닫기).` },
     ],
   });
 }
@@ -78,7 +78,7 @@ export async function generateEvents(state: GameState, count: number): Promise<G
     apiKey: state.settings.openaiApiKey,
     model: state.settings.model,
     temperature: 1.0,
-    maxTokens: 1800,
+    maxTokens: 2800,
     messages: [
       { role: 'system', content: buildEventSystemPrompt(state) },
       { role: 'user', content: `오늘 일자(${state.clock.currentDate}) 기준으로 ${count}개의 이벤트를 생성하라.
@@ -121,7 +121,7 @@ export async function generateSnsPosts(state: GameState, count: number): Promise
     apiKey: state.settings.openaiApiKey,
     model: state.settings.model,
     temperature: 1.0,
-    maxTokens: 1500,
+    maxTokens: 2500,
     messages: [
       { role: 'system', content: `당신은 한국 SNS·인터넷 커뮤니티 사용자들의 실제 게시물을 생성한다.
 
@@ -180,7 +180,7 @@ export async function generateWorldEvents(state: GameState, count: number): Prom
     apiKey: state.settings.openaiApiKey,
     model: state.settings.model,
     temperature: 1.05,
-    maxTokens: 1200,
+    maxTokens: 2000,
     messages: [
       { role: 'system', content: `당신은 국제정세 시뮬레이터다. 대한민국 외 다른 국가·국제기구·다국적 기업·전쟁 당사자의 능동적 행동을 묘사한다.
 
@@ -228,7 +228,7 @@ export async function generateArticles(state: GameState, count: number): Promise
     apiKey: state.settings.openaiApiKey,
     model: state.settings.model,
     temperature: 0.9,
-    maxTokens: 1500,
+    maxTokens: 2500,
     messages: [
       { role: 'system', content: `당신은 한국 주요 언론사 기자다. 각 매체의 정치 성향에 따라 같은 사안도 다르게 프레임하라.
 
@@ -287,7 +287,7 @@ export async function resolveEventChoice(
     apiKey: state.settings.openaiApiKey,
     model: state.settings.model,
     temperature: 0.7,
-    maxTokens: 700,
+    maxTokens: 1500,
     messages: [
       { role: 'system', content: buildDecisionSystemPrompt(state) },
       { role: 'user', content: `이벤트: ${event.headline}\n본문: ${event.body}\n\n대통령이 선택한 대응: "${choiceLabel}"\n사전 예상 효과: ${JSON.stringify(expected)}\n\n실제 결과를 JSON으로 산출하라.` },
