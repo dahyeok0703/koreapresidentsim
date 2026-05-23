@@ -7,6 +7,7 @@ import {
   buildEventSystemPrompt,
   buildDecisionSystemPrompt,
   summarizeState,
+  EFFECTS_SCHEMA_INSTRUCTION,
 } from './prompts';
 
 export async function askAdvisor(
@@ -213,6 +214,107 @@ JSON: {"events":[{"category":"DIPLOMACY|WAR|ECONOMY|DOMESTIC|TECH|DISASTER|LEADE
     involvedCountries: Array.isArray(e.involvedCountries) ? e.involvedCountries : [],
     koreaImpact: (e.koreaImpact ?? 'LOW') as any,
   }));
+}
+
+// ---- AI: 외국 능동 보복 생성 ----
+// 관계 악화·약점 분석 → 적대국이 한국에 가하는 능동 보복을 AI가 동적으로 생성
+export async function generateRetaliations(state: GameState): Promise<{
+  events: GameEvent[]; effectsAll: PartialEffects[];
+}> {
+  // 관계 -10 이하 적대·경쟁국 + 북한긴장 50+
+  const hostile = state.countries.filter(c => c.relation < -10).slice(0, 10);
+  const nkHigh = state.security.northKoreaTension > 50;
+  if (hostile.length === 0 && !nkHigh) return { events: [], effectsAll: [] };
+
+  // 한국 약점 분석
+  const weaknesses: string[] = [];
+  if (state.security.rokMilitaryReadiness < 70) weaknesses.push(`군 준비태세 ${state.security.rokMilitaryReadiness} (저하)`);
+  if (state.security.northKoreaTension > 65) weaknesses.push(`북한긴장 ${state.security.northKoreaTension} (높음)`);
+  if (state.security.usAllianceStrength < 70) weaknesses.push(`한미동맹 ${state.security.usAllianceStrength} (약화)`);
+  if (state.economy.fxReservesUSD < 3500) weaknesses.push(`외환보유고 $${state.economy.fxReservesUSD}B (감소)`);
+  if (state.economy.treasuryBalanceKRW < 20) weaknesses.push(`국고 ₩${state.economy.treasuryBalanceKRW}조 (부족)`);
+  if (state.economy.kospi < 2500) weaknesses.push(`코스피 ${state.economy.kospi} (침체)`);
+  if (state.approval.overall < 35) weaknesses.push(`지지율 ${state.approval.overall}% (낮음)`);
+
+  const hostileInfo = hostile.map(c =>
+    `- ${c.id} ${c.name}: 관계 ${c.relation}, 신뢰 ${c.trustLevel}, 정상 ${c.leader}, ${c.alliance}, 교역 $${c.tradeVolumeUSD}억`,
+  ).join('\n');
+
+  const sys = `당신은 국제정세 시뮬레이터다. 대한민국과 관계가 악화된 국가들이 한국의 약점을 노려
+가하는 능동적·현실적 보복 행동을 1~3개 생성한다.
+
+[규칙]
+- 사용자(한국 대통령)가 한 행동을 가정하지 말 것. 외국이 일방적으로 가하는 행동만.
+- 한국의 약점(군사 약체·외교 고립·경제 침체)을 명시적으로 노리는 행동.
+- 사실적인 한국 외교·안보 패턴 반영:
+  · 중국: 갈륨·게르마늄·요소수 통제, 한한령, 어선 나포, 단체관광 비자 중단
+  · 일본: 후쿠시마 추가 방류, 반도체 소재 수출규제, 독도 영해 침범, 강제동원 부정
+  · 미국: 자동차/철강/반도체 관세, 방위비 인상 압박, IRA 보조금 차별
+  · 북한: ICBM 발사, 오물풍선, 무인기 침투, NLL 도발, 사이버 공격
+  · 러시아: 사이버 공격, 북한에 무기·기술 이전, 비우호국 제재
+  · 이란: 호르무즈 봉쇄, 한국 선박 억류
+- 각 보복은 분명한 효과(effects)를 가져야 함.
+- 보복 규모는 관계 악화도에 비례. 단 너무 과도하지 않게.
+
+[현재 한국 약점]
+${weaknesses.length ? weaknesses.join('\n') : '특별한 약점 없음 (보복 규모 작게)'}
+
+[적대·경쟁국 현황]
+${hostileInfo}
+${nkHigh ? `\n[북한] 긴장도 ${state.security.northKoreaTension}, 핵 추정 ${state.security.northKoreaNukes}기` : ''}
+
+[현재 상황 요약]
+${summarizeState(state)}
+
+${EFFECTS_SCHEMA_INSTRUCTION}
+
+JSON 출력:
+{
+  "retaliations": [
+    {
+      "sourceCountryId": "CN|JP|US|NK|RU|IR|...",
+      "category": "ECONOMY|DIPLOMACY|SECURITY|NK|MEDIA|TECH",
+      "severity": "MINOR|MODERATE|MAJOR|CRITICAL",
+      "headline": "한국 신문 헤드라인 톤",
+      "body": "2~3문장 본문 (왜 지금 시점에 보복하는지 약점 명시)",
+      "effects": { ... effects 스키마 ... }
+    }
+  ]
+}`;
+
+  try {
+    const data = await openaiJSON<{ retaliations: any[] }>({
+      apiKey: state.settings.openaiApiKey,
+      model: state.settings.model,
+      temperature: 0.95,
+      maxTokens: 2200,
+      messages: [
+        { role: 'system', content: sys },
+        { role: 'user', content: `${state.clock.currentDate} 기준, 위 적대국들이 한국에 가할 법한 보복 1~3개를 생성하라. JSON은 반드시 완결.` },
+      ],
+    });
+    const list = data.retaliations ?? [];
+    const events: GameEvent[] = list.map(r => {
+      const sourceCountry = state.countries.find(c => c.id === r.sourceCountryId);
+      const sourceName = sourceCountry?.name ?? r.sourceCountryId ?? '?';
+      return {
+        id: genId('evt'),
+        date: state.clock.currentDate,
+        category: (r.category ?? 'DIPLOMACY') as any,
+        severity: (r.severity ?? 'MAJOR') as any,
+        headline: `[${sourceName}의 보복] ${r.headline ?? ''}`,
+        body: String(r.body ?? ''),
+        source: r.sourceCountryId === 'NK' ? '합동참모본부 / 국정원' : '청와대 국가안보실 / 외교부',
+        resolved: true,
+        effects: r.effects,
+      };
+    });
+    const effectsAll = list.map(r => r.effects).filter(Boolean) as PartialEffects[];
+    return { events, effectsAll };
+  } catch (err) {
+    console.warn('보복 생성 실패', err);
+    return { events: [], effectsAll: [] };
+  }
 }
 
 // ---- AI: 뉴스 기사 생성 ----
@@ -936,28 +1038,42 @@ export async function advanceTurn(state: GameState, days = 7): Promise<GameState
   if (s.settings.autoEvents && s.settings.openaiApiKey) {
     // 병렬로 이벤트·SNS·기사 생성
     try {
-      const [events, posts, articles, worldEvents] = await Promise.allSettled([
+      // 적대국 존재 시에만 보복 생성 (토큰 절약)
+      const hasHostile = s.countries.some(c => c.relation < -10) || s.security.northKoreaTension > 50;
+      const tasks: Promise<any>[] = [
         generateEvents(s, s.settings.eventsPerTurn),
         generateSnsPosts(s, Math.min(8, days + 2)),
         generateArticles(s, Math.min(6, days + 1)),
         generateWorldEvents(s, Math.min(4, Math.ceil(days / 2))),
-      ]);
+      ];
+      if (hasHostile) tasks.push(generateRetaliations(s));
+
+      const results = await Promise.allSettled(tasks);
+      const [events, posts, articles, worldEvents, retaliations] = results;
 
       if (events.status === 'fulfilled') {
-        const evs = events.value;
+        const evs = events.value as GameEvent[];
         for (const e of evs) {
           if (e.effects) s = applyEffects(s, e.effects);
         }
         s = { ...s, events: [...evs, ...s.events].slice(0, 200) };
       }
       if (posts.status === 'fulfilled') {
-        s = { ...s, sns: { ...s.sns, recentPosts: [...posts.value, ...s.sns.recentPosts].slice(0, 80) } };
+        s = { ...s, sns: { ...s.sns, recentPosts: [...(posts.value as SnsPost[]), ...s.sns.recentPosts].slice(0, 80) } };
       }
       if (articles.status === 'fulfilled') {
-        s = { ...s, articles: [...articles.value, ...s.articles].slice(0, 150) };
+        s = { ...s, articles: [...(articles.value as NewsArticle[]), ...s.articles].slice(0, 150) };
       }
       if (worldEvents.status === 'fulfilled') {
-        s = { ...s, worldEvents: [...worldEvents.value, ...s.worldEvents].slice(0, 60) };
+        s = { ...s, worldEvents: [...(worldEvents.value as WorldEvent[]), ...s.worldEvents].slice(0, 60) };
+      }
+      if (retaliations && retaliations.status === 'fulfilled') {
+        const ret = retaliations.value as { events: GameEvent[]; effectsAll: PartialEffects[] };
+        // 효과 먼저 적용 후 이벤트 추가
+        for (const eff of ret.effectsAll) s = applyEffects(s, eff);
+        if (ret.events.length > 0) {
+          s = { ...s, events: [...ret.events, ...s.events].slice(0, 200) };
+        }
       }
     } catch (err) {
       console.error('자동 생성 실패', err);
