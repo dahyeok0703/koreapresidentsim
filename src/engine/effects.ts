@@ -2,6 +2,7 @@ import type { GameState, PartialEffects, ApprovalBreakdown, Bill, GameEvent } fr
 import type { Sector } from '../data/companies';
 import { ALL_BILL_TEMPLATES, AUTONOMOUS_ACTIONS } from '../data/bills';
 import { FOREIGN_LEADER_TERMS } from '../data/foreignLeaders';
+import { RETALIATIONS, isTriggered } from '../data/retaliations';
 import { genId } from '../utils/id';
 import { buildTermEvaluation } from './evaluation';
 
@@ -305,6 +306,81 @@ function advanceOneDay(state: GameState): GameState {
   // === 건축물 자동 완공 처리 ===
   s = processBuildingCompletion(s, newDate);
 
+  // === 외국 능동 보복 처리 ===
+  s = processForeignRetaliation(s, newDate);
+
+  return s;
+}
+
+// ---------------- 외국 능동 보복 ----------------
+function processForeignRetaliation(state: GameState, today: string): GameState {
+  // 3일에 한 번씩만 체크
+  if (state.clock.daysInOffice % 3 !== 0) return state;
+
+  let s = state;
+  const newEvents: GameEvent[] = [];
+  const triggeredCountries = new Set<string>();
+
+  // 관계 -10 이하인 국가들만 후보
+  const hostileCountries = s.countries.filter(c => c.relation < -10);
+  const treasury = s.economy.treasuryBalanceKRW;
+  const readiness = s.security.rokMilitaryReadiness;
+  const nkTension = s.security.northKoreaTension;
+
+  for (const c of hostileCountries) {
+    if (triggeredCountries.has(c.id)) continue;
+    // 관계가 나쁠수록 보복 확률 ↑
+    const hostility = Math.max(0, -c.relation - 10);    // 0~90
+    const baseChance = hostility / 600;                  // 0~0.15
+    // 군사 약체일수록 안보 보복 확률 ↑
+    const militaryWeakness = Math.max(0, 75 - readiness) / 200;
+    const totalChance = Math.min(0.45, baseChance + militaryWeakness);
+    if (Math.random() > totalChance) continue;
+
+    const pool = RETALIATIONS.filter(r => r.countryId === c.id && isTriggered(r, {
+      relation: c.relation, nkTension, militaryReadiness: readiness, treasury,
+    }));
+    if (pool.length === 0) continue;
+
+    const r = pool[Math.floor(Math.random() * pool.length)];
+    s = applyEffects(s, r.effects);
+    newEvents.push({
+      id: genId('evt'),
+      date: today,
+      category: r.category,
+      severity: r.severity,
+      headline: `[${c.name}의 보복] ${r.headline}`,
+      body: r.body,
+      source: '청와대 국가안보실 / 외교부',
+      resolved: true,
+    });
+    triggeredCountries.add(c.id);
+  }
+
+  // 북한은 별도 트리거 (긴장도 기반)
+  if (nkTension > 50 && !triggeredCountries.has('NK') && Math.random() < (nkTension - 40) / 300) {
+    const nkPool = RETALIATIONS.filter(r => r.countryId === 'NK' && isTriggered(r, {
+      relation: -75, nkTension, militaryReadiness: readiness, treasury,
+    }));
+    if (nkPool.length > 0) {
+      const r = nkPool[Math.floor(Math.random() * nkPool.length)];
+      s = applyEffects(s, r.effects);
+      newEvents.push({
+        id: genId('evt'),
+        date: today,
+        category: r.category,
+        severity: r.severity,
+        headline: `[북한 도발] ${r.headline}`,
+        body: r.body,
+        source: '합동참모본부 / 국정원',
+        resolved: true,
+      });
+    }
+  }
+
+  if (newEvents.length > 0) {
+    s = { ...s, events: [...newEvents, ...s.events].slice(0, 200) };
+  }
   return s;
 }
 

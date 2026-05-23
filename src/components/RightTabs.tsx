@@ -6,6 +6,7 @@ import { LineChart, Line, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'rec
 import { MINISTRY_CATEGORY } from '../data/ministries';
 import { CONTINENT_NAME } from '../data/countries';
 import { CONFIRMATION_REQUIRED, NOMINEE_POOL } from '../data/adminBodies';
+import { TRADE_BY_COUNTRY } from '../data/trade';
 import type { Continent, MinistryId, BuildingCategory, RegionId, AllianceStatus, WeaponEntry } from '../types/game';
 
 const TABS = [
@@ -21,6 +22,7 @@ const TABS = [
   { id: 'REGIONS',      label: '행정구역', icon: '🗺️' },
   { id: 'INFRA',        label: '토건',     icon: '🏗️' },
   { id: 'COMPANIES',    label: '기업',     icon: '🏭' },
+  { id: 'TRADE',        label: '무역',     icon: '🚢' },
   { id: 'CULTURE',      label: '문화',     icon: '🎭' },
   { id: 'ELECTIONS',    label: '선거',     icon: '🗳️' },
   { id: 'LAWS',         label: '법령',     icon: '📚' },
@@ -61,6 +63,7 @@ export default function RightTabs() {
         {tab === 'REGIONS'   && <RegionsTab />}
         {tab === 'INFRA'     && <InfraTab />}
         {tab === 'COMPANIES' && <CompaniesTab />}
+        {tab === 'TRADE'     && <TradeTab />}
         {tab === 'CULTURE'   && <CultureTab />}
         {tab === 'ELECTIONS' && <ElectionsTab />}
         {tab === 'LAWS'      && <LawsTab />}
@@ -1415,6 +1418,175 @@ function CompaniesTab() {
           ));
         })()}
       </Panel>
+    </>
+  );
+}
+
+// ============ 무역 ============
+function TradeTab() {
+  const countries = useGame(s => s.state!.countries);
+  const economy = useGame(s => s.state!.economy);
+  const issueDecision = useGame(s => s.issueDecision);
+  const busy = useGame(s => s.busy);
+  const [pickedId, setPicked] = useState<string | null>('US');
+
+  const countriesWithTrade = countries
+    .map(c => ({ country: c, profile: TRADE_BY_COUNTRY[c.id] }))
+    .filter(x => x.profile)
+    .sort((a, b) => (b.profile.totalExportUSD + b.profile.totalImportUSD) - (a.profile.totalExportUSD + a.profile.totalImportUSD));
+
+  const totalExport = countriesWithTrade.reduce((a, x) => a + x.profile.totalExportUSD, 0);
+  const totalImport = countriesWithTrade.reduce((a, x) => a + x.profile.totalImportUSD, 0);
+
+  const picked = countriesWithTrade.find(x => x.country.id === pickedId);
+
+  const riskColor: Record<string, string> = {
+    LOW: 'text-emerald-300 border-emerald-800 bg-emerald-900/30',
+    MED: 'text-yellow-300 border-yellow-800 bg-yellow-900/30',
+    HIGH: 'text-orange-300 border-orange-800 bg-orange-900/30',
+    CRITICAL: 'text-red-300 border-red-800 bg-red-900/30',
+  };
+
+  return (
+    <>
+      <Panel title="대한민국 무역 종합">
+        <div className="grid grid-cols-3 gap-2">
+          <div className="bg-slate-950/60 border border-slate-800 rounded p-2 text-center">
+            <div className="text-[10px] text-slate-400">총 수출 (주요 27개국)</div>
+            <div className="text-base font-mono text-emerald-300">${fmtInt(totalExport)}M</div>
+          </div>
+          <div className="bg-slate-950/60 border border-slate-800 rounded p-2 text-center">
+            <div className="text-[10px] text-slate-400">총 수입</div>
+            <div className="text-base font-mono text-red-300">${fmtInt(totalImport)}M</div>
+          </div>
+          <div className="bg-slate-950/60 border border-slate-800 rounded p-2 text-center">
+            <div className="text-[10px] text-slate-400">무역수지</div>
+            <div className={`text-base font-mono ${totalExport - totalImport >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+              {totalExport - totalImport >= 0 ? '+' : ''}${fmtInt(totalExport - totalImport)}M
+            </div>
+          </div>
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+          <Stat label="이번달 수출" value={`$${fmtNum(economy.monthlyExportUSD, 1)}B`} />
+          <Stat label="이번달 수입" value={`$${fmtNum(economy.monthlyImportUSD, 1)}B`} />
+          <Stat label="이번달 수지" value={`$${fmtNum(economy.monthlyTradeBalanceUSD, 1)}B`} color={economy.monthlyTradeBalanceUSD >= 0 ? 'text-emerald-300' : 'text-red-300'} />
+          <Stat label="YTD 무역수지" value={`$${fmtNum(economy.ytdTradeBalanceUSD, 1)}B`} />
+          <Stat label="경상수지" value={`$${fmtNum(economy.currentAccountUSD, 1)}B`} />
+          <Stat label="외환보유고" value={`$${fmtInt(economy.fxReservesUSD)}B`} />
+        </div>
+      </Panel>
+
+      <Panel title={`교역 상대국 (${countriesWithTrade.length})`}>
+        <div className="space-y-1 max-h-[420px] overflow-y-auto pr-1">
+          {countriesWithTrade.map(({ country, profile }) => {
+            const bal = profile.totalExportUSD - profile.totalImportUSD;
+            const total = profile.totalExportUSD + profile.totalImportUSD;
+            return (
+              <button key={country.id} onClick={() => setPicked(country.id)}
+                className={`w-full text-left bg-slate-950/40 border rounded p-1.5 hover:border-blue-500 ${pickedId === country.id ? 'border-blue-500' : 'border-slate-800'}`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-sm font-semibold truncate">{country.flag} {country.name}</span>
+                    <Chip color={riskColor[profile.riskLevel]}>{profile.riskLevel}</Chip>
+                    <span className={`text-[10px] ${country.relation >= 0 ? 'text-emerald-300' : 'text-red-300'} font-mono`}>관계 {country.relation > 0 ? '+' : ''}{country.relation}</span>
+                  </div>
+                  <span className="text-[10px] font-mono shrink-0">
+                    <span className="text-slate-300">${fmtInt(total)}M</span>
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-1 mt-0.5 text-[10px]">
+                  <div className="text-emerald-300/80">수출 ${fmtInt(profile.totalExportUSD)}M</div>
+                  <div className="text-red-300/80">수입 ${fmtInt(profile.totalImportUSD)}M</div>
+                  <div className={bal >= 0 ? 'text-emerald-300' : 'text-red-300'}>
+                    수지 {bal > 0 ? '+' : ''}${fmtInt(bal)}M
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </Panel>
+
+      {picked && (
+        <Panel title={`${picked.country.flag} ${picked.country.name} 무역 상세`}>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+            <Stat label="총 교역액"  value={`$${fmtInt(picked.profile.totalExportUSD + picked.profile.totalImportUSD)}M`} />
+            <Stat label="무역수지"   value={`$${fmtInt(picked.profile.totalExportUSD - picked.profile.totalImportUSD)}M`}
+              color={picked.profile.totalExportUSD - picked.profile.totalImportUSD >= 0 ? 'text-emerald-300' : 'text-red-300'} />
+            <Stat label="의존도 리스크" value={picked.profile.riskLevel}
+              color={picked.profile.riskLevel === 'CRITICAL' ? 'text-red-400' : picked.profile.riskLevel === 'HIGH' ? 'text-orange-300' : picked.profile.riskLevel === 'MED' ? 'text-yellow-300' : 'text-emerald-300'} />
+            <Stat label="FTA"        value={picked.country.hasFTA ? '체결' : '없음'} />
+            <Stat label="관계점수"   value={`${picked.country.relation > 0 ? '+' : ''}${picked.country.relation}`} />
+            <Stat label="신뢰도"     value={`${picked.country.trustLevel}/100`} />
+          </div>
+          {picked.profile.notes && (
+            <div className="text-[10px] text-yellow-300/80 mt-2 bg-yellow-950/20 border border-yellow-900 rounded px-2 py-1">
+              💡 {picked.profile.notes}
+            </div>
+          )}
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <div>
+              <div className="text-[10px] text-emerald-300 font-semibold mb-1">
+                🚢 한국 → {picked.country.name} 수출 ${fmtInt(picked.profile.totalExportUSD)}M
+              </div>
+              <div className="space-y-1">
+                {picked.profile.exportItems.length === 0 && <div className="text-[10px] text-slate-500">교역 없음</div>}
+                {picked.profile.exportItems.map((it: any, i: number) => (
+                  <div key={i} className="bg-slate-950/50 border border-slate-800 rounded p-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-200 truncate">{it.category}</span>
+                      <span className="font-mono text-emerald-300 shrink-0">${fmtInt(it.valueUSD)}M</span>
+                    </div>
+                    {it.share && (
+                      <div className="bar-bg h-1 mt-0.5">
+                        <div className="bar-fill bg-emerald-500" style={{ width: `${it.share}%` }} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-red-300 font-semibold mb-1">
+                🛳️ {picked.country.name} → 한국 수입 ${fmtInt(picked.profile.totalImportUSD)}M
+              </div>
+              <div className="space-y-1">
+                {picked.profile.importItems.length === 0 && <div className="text-[10px] text-slate-500">교역 없음</div>}
+                {picked.profile.importItems.map((it: any, i: number) => (
+                  <div key={i} className="bg-slate-950/50 border border-slate-800 rounded p-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-200 truncate">{it.category}</span>
+                      <span className="font-mono text-red-300 shrink-0">${fmtInt(it.valueUSD)}M</span>
+                    </div>
+                    {it.share && (
+                      <div className="bar-bg h-1 mt-0.5">
+                        <div className="bar-fill bg-red-500" style={{ width: `${it.share}%` }} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 pt-2 border-t border-slate-800">
+            <div className="text-[10px] text-slate-500 mb-1">무역 정책 (결정 모드)</div>
+            <div className="grid grid-cols-2 gap-1">
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.country.name}과의 FTA 협상을 추진/심화한다.`, `${picked.country.name} FTA`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">📋 FTA 협상</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.country.name}과의 자원·핵심소재 협력을 강화한다.`, `${picked.country.name} 자원협력`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">⛏️ 자원협력</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.country.name}으로의 수출 다변화·신규 진출 패키지를 발표한다.`, `${picked.country.name} 수출확대`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">📈 수출 확대</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.country.name}에 대한 반덤핑·세이프가드 조사를 개시한다.`, `${picked.country.name} 반덤핑`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">⚖️ 반덤핑 조사</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.country.name}산 ${picked.profile.importItems[0]?.category ?? '품목'}에 대한 수입 관세를 인상한다.`, `${picked.country.name} 관세인상`)}
+                className="btn-danger text-[10px] py-1 disabled:opacity-40">📈 관세 인상</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.country.name}으로의 ${picked.profile.exportItems[0]?.category ?? '품목'} 수출 통제를 발동한다.`, `${picked.country.name} 수출통제`)}
+                className="btn-danger text-[10px] py-1 disabled:opacity-40">🚫 수출 통제</button>
+            </div>
+          </div>
+        </Panel>
+      )}
     </>
   );
 }
