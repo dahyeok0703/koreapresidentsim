@@ -1,4 +1,4 @@
-import type { GameState, PartialEffects, ApprovalBreakdown, Bill, GameEvent } from '../types/game';
+import type { GameState, PartialEffects, ApprovalBreakdown, Bill, GameEvent, WeaponEntry } from '../types/game';
 import type { Sector } from '../data/companies';
 import { ALL_BILL_TEMPLATES, AUTONOMOUS_ACTIONS } from '../data/bills';
 import { FOREIGN_LEADER_TERMS } from '../data/foreignLeaders';
@@ -305,7 +305,181 @@ function advanceOneDay(state: GameState): GameState {
   // === 건축물 자동 완공 처리 ===
   s = processBuildingCompletion(s, newDate);
 
+  // === 무기 도입 단계 자동 진행 ===
+  s = processWeaponProcurement(s, newDate);
+
+  // === 인과 cascade (4일 사이클) ===
+  if (isFluctuationDay) s = applyCascades(s);
+
+  // === 전쟁/작전 모드 종료 자동 감지 ===
+  s = checkModeEnd(s, newDate);
+
   return s;
+}
+
+// ---------------- 무기 단계 진행 ----------------
+function processWeaponProcurement(state: GameState, today: string): GameState {
+  const completed: { name: string; count: number }[] = [];
+  const stageChanges: { name: string; stage: string }[] = [];
+  const updated = state.security.weapons.map(w => {
+    if (!['계약','생산','인도','시험','도입중'].includes(w.status)) return w;
+    if (!w.procurementStartedAt || !w.expectedOperatingAt) return w;
+    const start = new Date(w.procurementStartedAt).getTime();
+    const end = new Date(w.expectedOperatingAt).getTime();
+    const now = new Date(today).getTime();
+    const total = Math.max(1, end - start);
+    const pct = (now - start) / total;
+    let newStatus: WeaponEntry['status'];
+    if (pct >= 1) newStatus = '운용';
+    else if (pct >= 0.95) newStatus = '시험';
+    else if (pct >= 0.80) newStatus = '인도';
+    else if (pct >= 0.10) newStatus = '생산';
+    else newStatus = '계약';
+
+    let newCount = w.count;
+    // 인도 단계에서 점진적 인도 (인도 단계 안에서 0~contracted 까지)
+    if (w.contractedCount && newStatus === '인도') {
+      const deliveryProgress = (pct - 0.80) / 0.15;     // 0~1 within 인도 phase
+      newCount = Math.round(w.contractedCount * deliveryProgress);
+    } else if (newStatus === '시험' || newStatus === '운용') {
+      newCount = w.contractedCount ?? w.count;
+    }
+
+    if (newStatus !== w.status) {
+      stageChanges.push({ name: w.name, stage: newStatus });
+      if (newStatus === '운용') completed.push({ name: w.name, count: w.contractedCount ?? newCount });
+    }
+    return { ...w, status: newStatus, count: newCount };
+  });
+
+  const newEvents: GameEvent[] = [];
+  for (const c of completed) {
+    newEvents.push({
+      id: genId('evt'), date: today,
+      category: 'SECURITY' as const, severity: 'MINOR' as const,
+      headline: `[전력화 완료] ${c.name} ${c.count}기`,
+      body: `${c.name} ${c.count}기 도입이 완료되어 정식 전력화됐다.`,
+      source: '방위사업청 / 합참', resolved: true,
+    });
+  }
+
+  if (newEvents.length === 0 && stageChanges.length === 0) return state;
+  return {
+    ...state,
+    security: { ...state.security, weapons: updated },
+    events: [...newEvents, ...state.events].slice(0, 200),
+  };
+}
+
+// ---------------- 인과 cascade ----------------
+function applyCascades(s: GameState): GameState {
+  let next = s;
+  const noise = (range: number) => (Math.random() - 0.5) * range;
+
+  // 환율 → 인플레, 소비심리
+  const e = { ...next.economy };
+  if (e.fxUsdKrw > 1500) {
+    e.inflation = Math.round((e.inflation + 0.05 + noise(0.05)) * 100) / 100;
+    e.consumerConfidence = clamp(e.consumerConfidence - 0.8, 0, 200);
+  } else if (e.fxUsdKrw < 1200) {
+    e.inflation = Math.round((e.inflation - 0.03) * 100) / 100;
+  }
+  // 코스피 → 기업심리·소비심리
+  if (e.kospi < 2000) {
+    e.businessConfidence = clamp(e.businessConfidence - 1.5, 0, 200);
+    e.consumerConfidence = clamp(e.consumerConfidence - 1, 0, 200);
+  } else if (e.kospi > 3500) {
+    e.businessConfidence = clamp(e.businessConfidence + 0.8, 0, 200);
+  }
+  // 인플레 → 지지율, 소비
+  if (e.inflation > 4) {
+    next.approval = { ...next.approval, overall: clamp(next.approval.overall - 0.4) };
+    e.consumerConfidence = clamp(e.consumerConfidence - 1, 0, 200);
+  }
+  // 실업률 → 지지율, 청년 지지율 별도
+  if (e.unemployment > 5) {
+    const by = { ...next.approval.byAgeGroup };
+    by['18-29'] = clamp((by['18-29'] ?? 50) - 0.5);
+    by['30-39'] = clamp((by['30-39'] ?? 50) - 0.3);
+    next.approval = { ...next.approval, byAgeGroup: by, overall: clamp(next.approval.overall - 0.3) };
+  }
+  next.economy = e;
+
+  // 지지율 → 정부신뢰, SNS 정서
+  const a = next.approval.overall;
+  const so = { ...next.social };
+  if (a < 30) {
+    so.governmentTrust = clamp(so.governmentTrust - 0.4);
+    so.presidentialOfficeTrust = clamp(so.presidentialOfficeTrust - 0.6);
+    next.sns = { ...next.sns, sentimentScore: Math.max(-100, next.sns.sentimentScore - 1.5), protestSentiment: clamp(next.sns.protestSentiment + 1) };
+  } else if (a > 65) {
+    so.governmentTrust = clamp(so.governmentTrust + 0.3);
+    next.sns = { ...next.sns, sentimentScore: Math.min(100, next.sns.sentimentScore + 0.8) };
+  }
+
+  // 갈등 지수 → 자살률, 범죄
+  if (so.classConflictIndex > 75) so.suicideRate = Math.round((so.suicideRate + 0.05) * 100) / 100;
+  if (so.genderConflictIndex > 75) so.crimeIndex = Math.round((so.crimeIndex + 0.3) * 100) / 100;
+
+  // 출산율 누적 영향
+  if (so.birthRate < 0.8) so.populationGrowth = Math.round((so.populationGrowth - 0.005) * 1000) / 1000;
+  next.social = so;
+
+  // 북한 긴장 → DEFCON, 군 준비태세 압박
+  const sec = { ...next.security };
+  if (sec.northKoreaTension > 80 && sec.defconLevel > 2) sec.defconLevel = (sec.defconLevel - 1) as any;
+  if (sec.northKoreaTension < 40 && sec.defconLevel < 5) sec.defconLevel = (sec.defconLevel + 1) as any;
+  next.security = sec;
+
+  // 한미동맹 → 외교 신뢰 도미노
+  if (sec.usAllianceStrength < 60) {
+    next.countries = next.countries.map(c =>
+      ['JP','AU','PH','UK','DE','FR'].includes(c.id)
+        ? { ...c, trustLevel: clamp(c.trustLevel - 0.3) }
+        : c);
+  }
+  return next;
+}
+
+// ---------------- 전쟁·작전 모드 종료 감지 ----------------
+function checkModeEnd(state: GameState, today: string): GameState {
+  const mode = state.flags.gameMode as string | undefined;
+  if (mode === 'WAR') {
+    if (state.security.warEngagements.length === 0) {
+      return {
+        ...state,
+        flags: { ...state.flags, gameMode: 'NORMAL', warName: '' },
+        events: [{
+          id: genId('evt'), date: today,
+          category: 'POLITICS' as const, severity: 'MAJOR' as const,
+          headline: '[종전] 전쟁 상태 해제 — 평시 체제 복귀',
+          body: '진행 중이던 모든 전쟁 개입이 종결돼 게임이 평시 모드로 복귀합니다.',
+          source: '청와대', resolved: true,
+        } as GameEvent, ...state.events].slice(0, 200),
+      };
+    }
+  }
+  if (mode === 'OPERATION') {
+    // 작전 모드는 30일 후 자동 종료
+    const opStart = state.flags.opStartedAt as string | undefined;
+    if (opStart) {
+      const diffDays = Math.floor((new Date(today).getTime() - new Date(opStart).getTime()) / 86400000);
+      if (diffDays >= 30) {
+        return {
+          ...state,
+          flags: { ...state.flags, gameMode: 'NORMAL', opName: '', opStartedAt: '' },
+          events: [{
+            id: genId('evt'), date: today,
+            category: 'POLITICS' as const, severity: 'MODERATE' as const,
+            headline: `[작전 종료] ${state.flags.opName ?? '특수작전'} 종결`,
+            body: '특수 군사작전이 종결돼 평시 체제로 복귀합니다.',
+            source: '국방부', resolved: true,
+          } as GameEvent, ...state.events].slice(0, 200),
+        };
+      }
+    }
+  }
+  return state;
 }
 
 // ---------------- 건축물 자동 완공 ----------------

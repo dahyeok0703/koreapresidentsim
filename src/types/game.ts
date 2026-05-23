@@ -311,9 +311,12 @@ export interface WeaponEntry {
           | '헬기' | '구축함' | '잠수함' | '호위함' | '미사일' | '방공' | '레이더' | '드론' | '기타';
   name: string;
   count: number;
-  origin: string;             // 국산/미국/독일 등
-  status: '운용' | '도입중' | '퇴역대기' | '보관';
+  origin: string;
+  status: '계약' | '생산' | '인도' | '시험' | '운용' | '퇴역대기' | '퇴역' | '보관' | '도입중';
   notes?: string;
+  procurementStartedAt?: string;   // 도입 착수일 (계약 체결일)
+  expectedOperatingAt?: string;     // 전력화 예정일
+  contractedCount?: number;         // 계약 총 수량 (점진적 인도)
 }
 
 export interface MilitaryBase {

@@ -216,6 +216,78 @@ JSON: {"events":[{"category":"DIPLOMACY|WAR|ECONOMY|DOMESTIC|TECH|DISASTER|LEADE
   }));
 }
 
+// ---- AI: 전쟁 / 군사작전 일일 보고 ----
+export async function generateWarReport(state: GameState): Promise<{
+  event: GameEvent;
+  effects: PartialEffects;
+} | null> {
+  const mode = state.flags.gameMode;
+  if (mode !== 'WAR' && mode !== 'OPERATION') return null;
+  const isWar = mode === 'WAR';
+  const wars = state.security.warEngagements;
+  const warSummary = wars.length > 0
+    ? wars.map(w => `- ${w.name} (${w.koreaRole}, 병력 ${w.troopsDeployed}, 월비용 ${w.costPerMonth}조)`).join('\n')
+    : '(현재 등록된 분쟁 없음)';
+  const opName = state.flags.opName as string | undefined;
+  const opStartedAt = state.flags.opStartedAt as string | undefined;
+  const dayN = opStartedAt
+    ? Math.floor((new Date(state.clock.currentDate).getTime() - new Date(opStartedAt).getTime()) / 86400000) + 1
+    : 1;
+
+  const sys = `당신은 대한민국 합동참모본부 작전상황보고관이다. ${isWar ? '전쟁' : '특수 군사작전'} 상황의 오늘 일일 보고를 작성한다.
+
+[현재 상황]
+- 게임 모드: ${mode}
+- 오늘 ${state.clock.currentDate}
+${isWar ? `- 진행 중 분쟁:\n${warSummary}` : `- 작전명: ${opName} (${dayN}일차)`}
+
+[규칙]
+- 사실적·드라마틱한 작전 보고 톤 (간결, 시각·시간·지명 명시)
+- 실제 발생할 법한 군사·외교·경제 충격을 효과로 산출
+- 너무 격렬하지 않게 (매일 발생할 수 있는 수준)
+- 한국군 피해·적 피해·민간 피해·국제 반응 균형
+
+${EFFECTS_SCHEMA_INSTRUCTION}
+
+JSON 출력:
+{
+  "headline": "오늘의 ${isWar ? '전쟁' : '작전'} 보고 헤드라인 (예: '동해 함대 1진 출항·北 잠수함 1척 격침')",
+  "body": "3~5문장 작전 보고 (시간·장소·전과·피해·다음 작전)",
+  "severity": "MINOR|MODERATE|MAJOR|CRITICAL",
+  "effects": { ... }
+}`;
+
+  try {
+    const data = await openaiJSON<any>({
+      apiKey: state.settings.openaiApiKey,
+      model: state.settings.model,
+      temperature: 0.85,
+      maxTokens: 1500,
+      messages: [
+        { role: 'system', content: sys },
+        { role: 'user', content: `${state.clock.currentDate} 오늘의 ${isWar ? '전쟁' : '작전'} 일일 보고를 작성하라. JSON 완결.` },
+      ],
+    });
+    return {
+      event: {
+        id: genId('evt'),
+        date: state.clock.currentDate,
+        category: isWar ? 'WAR' as const : 'SECURITY' as const,
+        severity: (data.severity ?? 'MODERATE') as any,
+        headline: `[${isWar ? '전쟁' : '작전'} ${dayN}일차] ${data.headline ?? ''}`,
+        body: String(data.body ?? ''),
+        source: '합동참모본부 작전본부',
+        resolved: true,
+        effects: data.effects,
+      } as GameEvent,
+      effects: data.effects ?? {},
+    };
+  } catch (err) {
+    console.warn('전쟁/작전 보고 생성 실패', err);
+    return null;
+  }
+}
+
 // ---- AI: 외국 능동 보복 생성 ----
 // 관계 악화·약점 분석 → 적대국이 한국에 가하는 능동 보복을 AI가 동적으로 생성
 export async function generateRetaliations(state: GameState): Promise<{
@@ -484,17 +556,37 @@ export function applyAIActions(state: GameState, actions: AIAction[] | undefined
         }
         case 'ADD_WEAPON': {
           const p = act.params || {};
+          // 무기 도입은 단계별로 시간이 걸린다. 카테고리별 기본 도입 공기 (일)
+          const WEAPON_DAYS: Record<string, number> = {
+            '전차': 900, '장갑차': 720, '자주포': 720, '견인포': 365, '다연장': 540,
+            '전투기': 1825, '공격기': 1095, '수송기': 1095, '헬기': 730,
+            '구축함': 2920, '잠수함': 3650, '호위함': 2190,
+            '미사일': 540, '방공': 1095, '레이더': 730, '드론': 365, '기타': 365,
+          };
+          const cat = (p.category || '기타') as any;
+          const today = s.clock.currentDate;
+          const totalDays = Number(p.totalDays) > 0
+            ? Number(p.totalDays)
+            : (WEAPON_DAYS[cat] ?? 730);
+          const expectedAt = (() => {
+            const d = new Date(today);
+            d.setDate(d.getDate() + totalDays);
+            return d.toISOString().slice(0, 10);
+          })();
           const w: WeaponEntry = {
             id: genId('wpn'),
-            category: (p.category || '기타') as any,
+            category: cat,
             name: String(p.name || '신규 무기'),
-            count: Math.max(1, Number(p.count) || 1),
+            count: 0,                                  // 인도 단계부터 점진적 증가
+            contractedCount: Math.max(1, Number(p.count) || 1),
             origin: String(p.origin || '국산'),
-            status: '도입중',
+            status: '계약',
+            procurementStartedAt: today,
+            expectedOperatingAt: expectedAt,
             notes: p.notes,
           };
           s = { ...s, security: { ...s.security, weapons: [w, ...s.security.weapons] } };
-          log.push(`✅ 무기 도입: ${w.name} ${w.count}기`);
+          log.push(`📋 무기 계약 체결: ${w.name} ${w.contractedCount}기 — 전력화 ${expectedAt} (${totalDays}일 후)`);
           break;
         }
         case 'REMOVE_WEAPON': {
@@ -703,23 +795,30 @@ export function applyAIActions(state: GameState, actions: AIAction[] | undefined
         }
         case 'BEGIN_WAR': {
           const p = act.params || {};
+          const warName = String(p.name || '신규 분쟁');
+          const role = (p.koreaRole || 'DIPLOMATIC') as any;
+          // 전면 군사 개입(COMBAT)이면 게임 모드를 WAR로 전환
+          const enterWarMode = role === 'COMBAT' || /전면전|전쟁|침공/.test(warName);
           s = {
             ...s,
             security: {
               ...s.security,
               warEngagements: [{
                 id: genId('war'),
-                name: String(p.name || '신규 분쟁'),
+                name: warName,
                 parties: p.parties || [],
-                koreaRole: (p.koreaRole || 'DIPLOMATIC') as any,
+                koreaRole: role,
                 startDate: s.clock.currentDate,
                 troopsDeployed: Number(p.troops) || 0,
                 costPerMonth: Number(p.costPerMonth) || 0.5,
                 notes: String(p.notes || ''),
               }, ...s.security.warEngagements],
             },
+            flags: enterWarMode
+              ? { ...s.flags, gameMode: 'WAR', warName, warStartedAt: s.clock.currentDate }
+              : s.flags,
           };
-          log.push(`⚔️ 전쟁/분쟁 개시: ${p.name}`);
+          log.push(`⚔️ 전쟁/분쟁 개시: ${warName}${enterWarMode ? ' (전쟁 모드 진입 — 하루씩만 진행 가능)' : ''}`);
           break;
         }
         case 'END_WAR': {
@@ -756,7 +855,6 @@ export function applyAIActions(state: GameState, actions: AIAction[] | undefined
           break;
         }
         case 'BEGIN_SPECIAL_OP': {
-          // 평시 군사작전 (전면전 아님, 정밀타격·특수작전·사이버 등)
           const p = act.params || {};
           const opName = String(p.name || '특수작전');
           const target = String(p.target || '미상');
@@ -772,18 +870,20 @@ export function applyAIActions(state: GameState, actions: AIAction[] | undefined
           }
           s = {
             ...s,
+            // OPERATION 모드 진입 (30일 후 자동 종료)
+            flags: { ...s.flags, gameMode: 'OPERATION', opName, opStartedAt: s.clock.currentDate },
             events: [{
               id: genId('evt'),
               date: s.clock.currentDate,
               category: 'SECURITY' as const,
               severity: 'MAJOR' as const,
-              headline: `[군사작전] ${opName} — ${target} 타격`,
-              body: `${opType} 형식으로 ${target}에 대한 ${opName}이 실행됐다. ${p.notes ?? ''}`,
+              headline: `[군사작전 개시] ${opName} — ${target} 타격`,
+              body: `${opType} 형식으로 ${target}에 대한 ${opName}이 실행됐다. ${p.notes ?? ''} 작전 종결 시까지 게임은 1일 단위 진행만 허용된다.`,
               source: '국방부 / 합참',
               resolved: true,
             } as GameEvent, ...s.events].slice(0, 200),
           };
-          log.push(`💥 군사작전: ${opName} (${opType} · ${target})`);
+          log.push(`💥 군사작전 개시: ${opName} (작전 모드 진입 — 하루씩만 진행)`);
           break;
         }
         case 'CREATE_GOV_BODY': {
@@ -1033,23 +1133,45 @@ export function applyDecisionResult(
 
 // ---- 턴 진행 ----
 export async function advanceTurn(state: GameState, days = 7): Promise<GameState> {
+  // 전쟁/작전 모드면 강제로 1일만 진행
+  const mode = state.flags.gameMode as string | undefined;
+  if (mode === 'WAR' || mode === 'OPERATION') days = 1;
+
   let s = advanceClock(state, days);
+
+  // 전쟁 모드 매일 자동 피해 (AI 보고 외에 기본 피해)
+  if (mode === 'WAR') {
+    const e = { ...s.economy };
+    e.kospi = Math.max(500, Math.round(e.kospi - 30 - Math.random() * 50));
+    e.fxUsdKrw = Math.min(2000, Math.round(e.fxUsdKrw + 5 + Math.random() * 15));
+    e.consumerConfidence = Math.max(0, e.consumerConfidence - 2);
+    e.businessConfidence = Math.max(0, e.businessConfidence - 3);
+    e.treasuryBalanceKRW = Math.max(0, Math.round((e.treasuryBalanceKRW - 0.5) * 100) / 100);
+    s.economy = e;
+    const sec = { ...s.security };
+    sec.rokMilitaryReadiness = Math.max(0, sec.rokMilitaryReadiness - 0.5);
+    s.security = sec;
+  }
 
   if (s.settings.autoEvents && s.settings.openaiApiKey) {
     // 병렬로 이벤트·SNS·기사 생성
     try {
       // 적대국 존재 시에만 보복 생성 (토큰 절약)
       const hasHostile = s.countries.some(c => c.relation < -10) || s.security.northKoreaTension > 50;
+      const inSpecialMode = mode === 'WAR' || mode === 'OPERATION';
       const tasks: Promise<any>[] = [
-        generateEvents(s, s.settings.eventsPerTurn),
+        generateEvents(s, inSpecialMode ? 1 : s.settings.eventsPerTurn),
         generateSnsPosts(s, Math.min(8, days + 2)),
         generateArticles(s, Math.min(6, days + 1)),
         generateWorldEvents(s, Math.min(4, Math.ceil(days / 2))),
       ];
       if (hasHostile) tasks.push(generateRetaliations(s));
+      if (inSpecialMode) tasks.push(generateWarReport(s));
 
       const results = await Promise.allSettled(tasks);
-      const [events, posts, articles, worldEvents, retaliations] = results;
+      const [events, posts, articles, worldEvents, ...rest] = results;
+      const retaliations = hasHostile ? rest.shift() : undefined;
+      const warReport = inSpecialMode ? rest.shift() : undefined;
 
       if (events.status === 'fulfilled') {
         const evs = events.value as GameEvent[];
@@ -1069,11 +1191,15 @@ export async function advanceTurn(state: GameState, days = 7): Promise<GameState
       }
       if (retaliations && retaliations.status === 'fulfilled') {
         const ret = retaliations.value as { events: GameEvent[]; effectsAll: PartialEffects[] };
-        // 효과 먼저 적용 후 이벤트 추가
         for (const eff of ret.effectsAll) s = applyEffects(s, eff);
         if (ret.events.length > 0) {
           s = { ...s, events: [...ret.events, ...s.events].slice(0, 200) };
         }
+      }
+      if (warReport && warReport.status === 'fulfilled' && warReport.value) {
+        const wr = warReport.value as { event: GameEvent; effects: PartialEffects };
+        s = applyEffects(s, wr.effects);
+        s = { ...s, events: [wr.event, ...s.events].slice(0, 200) };
       }
     } catch (err) {
       console.error('자동 생성 실패', err);

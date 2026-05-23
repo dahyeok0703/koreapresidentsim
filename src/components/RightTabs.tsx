@@ -408,32 +408,75 @@ function MilitaryTab() {
         </>
       )}
 
-      {section === 'WEAPONS' && (
-        <Panel title={`무기 인벤토리 (${sec.weapons.length}종)`} right={<span className="text-[10px] text-slate-500">※ 도입·개발은 채팅으로만</span>}>
-          {Object.entries(weaponsByCat).map(([cat, items]) => (
-            <div key={cat} className="mb-2">
-              <div className="text-[10px] text-slate-500 mb-0.5 sticky top-0 bg-slate-900/80 backdrop-blur-sm">{cat} ({items.length}종)</div>
-              <div className="space-y-1">
-                {items.map(w => (
-                  <div key={w.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-slate-200">{w.name}</div>
-                        <div className="text-[10px] text-slate-500">{w.origin} · {w.status}{w.notes ? ` · ${w.notes}` : ''}</div>
+      {section === 'WEAPONS' && (() => {
+        const today = useGame.getState().state!.clock.currentDate;
+        const stageColor: Record<string, string> = {
+          '계약':   'text-blue-300 border-blue-800 bg-blue-900/30',
+          '생산':   'text-yellow-300 border-yellow-800 bg-yellow-900/30',
+          '인도':   'text-orange-300 border-orange-800 bg-orange-900/30',
+          '시험':   'text-purple-300 border-purple-800 bg-purple-900/30',
+          '운용':   'text-emerald-300 border-emerald-800 bg-emerald-900/30',
+          '도입중': 'text-yellow-300 border-yellow-800 bg-yellow-900/30',
+          '퇴역대기':'text-orange-300 border-orange-800 bg-orange-900/30',
+          '퇴역':   'text-red-300 border-red-800 bg-red-900/30',
+          '보관':   'text-slate-300 border-slate-700 bg-slate-800',
+        };
+        return (
+          <Panel title={`무기 인벤토리 (${sec.weapons.length}종)`} right={<span className="text-[10px] text-slate-500">※ 도입·폐기 채팅 전용</span>}>
+            {Object.entries(weaponsByCat).map(([cat, items]) => (
+              <div key={cat} className="mb-2">
+                <div className="text-[10px] text-slate-500 mb-0.5 sticky top-0 bg-slate-900/80 backdrop-blur-sm">{cat} ({items.length}종)</div>
+                <div className="space-y-1">
+                  {items.map(w => {
+                    const procuring = ['계약','생산','인도','시험','도입중'].includes(w.status);
+                    let progress = 0;
+                    let daysLeft = 0;
+                    if (procuring && w.procurementStartedAt && w.expectedOperatingAt) {
+                      const s = new Date(w.procurementStartedAt).getTime();
+                      const e = new Date(w.expectedOperatingAt).getTime();
+                      const n = new Date(today).getTime();
+                      progress = Math.max(0, Math.min(100, ((n - s) / Math.max(1, e - s)) * 100));
+                      daysLeft = Math.max(0, Math.ceil((e - n) / 86400000));
+                    }
+                    return (
+                      <div key={w.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <div className="flex items-center gap-1 min-w-0">
+                            <span className="text-slate-200 truncate">{w.name}</span>
+                            <Chip color={stageColor[w.status] ?? ''}>{w.status}</Chip>
+                          </div>
+                          <span className="font-mono text-amber-300 shrink-0">
+                            {procuring && w.contractedCount
+                              ? `${fmtInt(w.count)}/${fmtInt(w.contractedCount)}기`
+                              : `${fmtInt(w.count)}기`}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-500">{w.origin}{w.notes ? ` · ${w.notes}` : ''}</div>
+                        {procuring && w.expectedOperatingAt && (
+                          <div className="mt-1">
+                            <div className="flex items-center justify-between text-[10px]">
+                              <span className="text-amber-300">📋 전력화: {w.expectedOperatingAt}</span>
+                              <span className="text-amber-300">D-{daysLeft}</span>
+                            </div>
+                            <div className="bar-bg h-1 mt-0.5">
+                              <div className="bar-fill bg-amber-500" style={{ width: `${progress}%` }} />
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <span className="font-mono text-amber-300 w-16 text-right shrink-0">{fmtInt(w.count)}기</span>
-                    </div>
-                  </div>
-                ))}
+                    );
+                  })}
+                </div>
               </div>
+            ))}
+            <div className="text-[10px] text-slate-500 mt-2 leading-relaxed">
+              ⚙️ 무기 도입은 단계별로 시간이 걸립니다. 채팅으로 명령:
+              <br />· <b className="text-emerald-300">계약 → 생산 → 인도 → 시험 → 운용</b> (자동 단계 진행)
+              <br />· 카테고리별 공기: 전투기 ~5년 · 잠수함 ~10년 · 전차 2.5년 · 미사일 1.5년
             </div>
-          ))}
-          <div className="text-[10px] text-slate-500 mt-2 leading-relaxed">
-            ⚙️ 무기 추가/폐기는 채팅 결정 모드로만 가능합니다.
-            <br />예: "F-35A 20기 추가 도입" · "KF-21 보라매 20기 양산 명령" · "M48 전차 200기 퇴역"
-          </div>
-        </Panel>
-      )}
+          </Panel>
+        );
+      })()}
 
       {section === 'BASES' && (
         <Panel title={`군사기지 (${sec.bases.length}개)`}>

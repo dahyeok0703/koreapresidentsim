@@ -93,7 +93,7 @@ export const useGame = create<UIState>((set, get) => ({
 
   hydrate() {
     const s = loadCurrent();
-    if (s && (s.version ?? 0) >= 12) set({ state: s, undoStack: [] });
+    if (s && (s.version ?? 0) >= 13) set({ state: s, undoStack: [] });
     else if (s) { localStorage.removeItem('kps-current'); }
   },
 

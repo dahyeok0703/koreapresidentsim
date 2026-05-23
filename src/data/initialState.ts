@@ -410,7 +410,7 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
   const jud = INITIAL_JUDICIARY;
 
   return {
-    version: 12,
+    version: 13,
     createdAt: new Date().toISOString(),
     president: { ...p, termEndsAt: termEndStr },
     clock: { currentDate: date, daysInOffice: 0, turnNumber: 1, speed: 'paused' },
@@ -595,7 +595,7 @@ export function buildNewTermState(
 
   return {
     ...prev,
-    version: 12,
+    version: 13,
     president: newPresident,
     clock: { currentDate: startDate, daysInOffice: 0, turnNumber: 1, speed: 'paused' },
     approval: buildApproval(newProfile.party, baseApproval),

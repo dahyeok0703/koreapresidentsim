@@ -16,8 +16,23 @@ export default function TopBar() {
 
   const party = state.parties.find(p => p.id === state.president.party);
   const yearsDone = (state.clock.daysInOffice / 365).toFixed(2);
+  const mode = state.flags.gameMode as string | undefined;
+  const isWar = mode === 'WAR';
+  const isOp = mode === 'OPERATION';
+  const isSpecial = isWar || isOp;
 
   return (
+    <>
+    {isSpecial && (
+      <div className={`px-4 py-1.5 text-center text-xs font-semibold border-y ${
+        isWar ? 'bg-red-950 border-red-700 text-red-200' : 'bg-orange-950 border-orange-700 text-orange-200'
+      }`}>
+        {isWar ? '⚔️ 전쟁 상태' : '💥 군사작전 상태'} —
+        {isWar
+          ? ` ${state.flags.warName ?? ''} — 하루 단위 진행만 가능 · 매일 작전 보고 발행 · 경제·전력 자동 감모`
+          : ` ${state.flags.opName ?? ''} — 30일 자동 종료 · 하루 단위 진행만 가능`}
+      </div>
+    )}
     <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 flex items-center justify-between gap-4">
       <div className="flex items-center gap-3">
         <div className="text-xs">
@@ -40,13 +55,17 @@ export default function TopBar() {
       </div>
 
       <div className="flex items-center gap-1">
-        <button onClick={() => nextTurn(1)} disabled={!!busy} className="btn flex items-center gap-1 text-xs disabled:opacity-50">
-          <PlayCircle size={14} /> 1일
+        <button onClick={() => nextTurn(1)} disabled={!!busy}
+          className={`btn flex items-center gap-1 text-xs disabled:opacity-50 ${isSpecial ? 'bg-red-800 hover:bg-red-700 text-white border-red-900' : ''}`}>
+          <PlayCircle size={14} /> 1일{isSpecial ? ' (특수모드)' : ''}
         </button>
-        <button onClick={() => nextTurn(7)} disabled={!!busy} className="btn-primary flex items-center gap-1 text-xs disabled:opacity-50">
+        <button onClick={() => nextTurn(7)} disabled={!!busy || isSpecial}
+          className="btn-primary flex items-center gap-1 text-xs disabled:opacity-30"
+          title={isSpecial ? '전쟁·작전 모드에서는 하루씩만 진행 가능' : ''}>
           <PlayCircle size={14} /> 1주 진행
         </button>
-        <button onClick={() => nextTurn(30)} disabled={!!busy} className="btn flex items-center gap-1 text-xs disabled:opacity-50">
+        <button onClick={() => nextTurn(30)} disabled={!!busy || isSpecial}
+          className="btn flex items-center gap-1 text-xs disabled:opacity-30">
           <FastForward size={14} /> 1개월
         </button>
         <div className="w-px h-5 bg-slate-700 mx-1" />
@@ -68,5 +87,6 @@ export default function TopBar() {
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showSaves && <SaveLoadModal onClose={() => setShowSaves(false)} />}
     </div>
+    </>
   );
 }

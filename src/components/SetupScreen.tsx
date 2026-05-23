@@ -66,7 +66,7 @@ export default function SetupScreen() {
   const refresh = async () => {
     try {
       const list = await listSaves();
-      setSavedSlots(list.filter(s => (s.state.version ?? 0) >= 12));
+      setSavedSlots(list.filter(s => (s.state.version ?? 0) >= 13));
     } catch {/* ignore */}
     finally { setSlotsLoading(false); }
   };
