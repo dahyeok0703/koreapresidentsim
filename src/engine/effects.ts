@@ -1,6 +1,7 @@
 import type { GameState, PartialEffects, ApprovalBreakdown, Bill, GameEvent } from '../types/game';
 import type { Sector } from '../data/companies';
 import { ALL_BILL_TEMPLATES, AUTONOMOUS_ACTIONS } from '../data/bills';
+import { FOREIGN_LEADER_TERMS } from '../data/foreignLeaders';
 import { genId } from '../utils/id';
 import { buildTermEvaluation } from './evaluation';
 
@@ -298,6 +299,57 @@ function advanceOneDay(state: GameState): GameState {
   // === 임기 종료 감지 → 평가표 생성 ===
   s = processTermEnd(s, newDate);
 
+  // === 외국 정상 임기 자동 교체 ===
+  s = processForeignLeaderRotation(s, newDate);
+
+  return s;
+}
+
+// ---------------- 외국 정상 자동 교체 ----------------
+function processForeignLeaderRotation(state: GameState, today: string): GameState {
+  let s = state;
+  const termPool = new Map(FOREIGN_LEADER_TERMS.map(l => [l.countryId, l]));
+  let rotated = 0;
+  const rotationEvents: GameEvent[] = [];
+  s = {
+    ...s,
+    countries: s.countries.map(c => {
+      if (!c.termEnd || c.termEnd > today) return c;
+      const pool = termPool.get(c.id);
+      if (!pool) return c;
+      const idx = (c.successorIndex ?? 0);
+      const newLeader = pool.successors[idx] ?? `신임 ${c.leader.split(' ')[0]} 후계자`;
+      // 다음 임기 만료일 = 임기 시작일 + 통상 임기 (대선 5년, 총리 4년, 종신 100년)
+      const termYears =
+        c.leaderTitle.includes('국왕') || c.leaderTitle.includes('아미르') || c.leaderTitle.includes('술탄') ? 30 :
+        c.leaderTitle.includes('주석') || c.leaderTitle.includes('총서기') || c.leaderTitle.includes('국무위원장') ? 5 :
+        c.leaderTitle.includes('총리') || c.leaderTitle.includes('수상') ? 4 : 5;
+      const nextEnd = new Date(today);
+      nextEnd.setFullYear(nextEnd.getFullYear() + termYears);
+      const nextEndStr = nextEnd.toISOString().slice(0, 10);
+      rotated++;
+      rotationEvents.push({
+        id: genId('evt'),
+        date: today,
+        category: 'DIPLOMACY' as const,
+        severity: 'MAJOR' as const,
+        headline: `[정상 교체] ${c.name} 새 ${c.leaderTitle}: ${newLeader}`,
+        body: `${c.name}에서 임기를 마친 ${c.leader} ${c.leaderTitle}의 후임으로 ${newLeader}이(가) 취임했다. ${c.name}의 정치 노선 변화 가능성에 주목.`,
+        source: '외교부 / 국제부',
+        resolved: true,
+      });
+      return {
+        ...c,
+        leader: newLeader,
+        termEnd: nextEndStr,
+        successorIndex: idx + 1,
+        recentEvents: [`${c.leader} 임기 만료, 후임 ${newLeader}`, ...c.recentEvents].slice(0, 5),
+      };
+    }),
+  };
+  if (rotated > 0) {
+    s = { ...s, events: [...rotationEvents, ...s.events].slice(0, 200) };
+  }
   return s;
 }
 

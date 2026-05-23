@@ -19,6 +19,17 @@ import { ADMIN_BODIES, INITIAL_ADMIN_TASKS, NOMINEE_POOL } from './adminBodies';
 import { buildElections } from './elections';
 import { INITIAL_CULTURAL } from './cultural';
 import { KOREAN_LAWS } from './laws';
+import { buildSubRegions } from './subRegions';
+import { FOREIGN_LEADER_TERMS } from './foreignLeaders';
+
+// 외국 정상 임기 데이터를 countries에 머지
+function withForeignLeaderTerms<T extends { id: string; termEnd?: string; successorIndex?: number }>(countries: T[]): T[] {
+  const map = new Map(FOREIGN_LEADER_TERMS.map(l => [l.countryId, l]));
+  return countries.map(c => {
+    const term = map.get(c.id);
+    return term ? { ...c, termEnd: term.termEnd, successorIndex: 0 } : c;
+  });
+}
 import { genId, randomKoreanName } from '../utils/id';
 export { genId, randomKoreanName };
 
@@ -399,7 +410,7 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
   const jud = INITIAL_JUDICIARY;
 
   return {
-    version: 11,
+    version: 12,
     createdAt: new Date().toISOString(),
     president: { ...p, termEndsAt: termEndStr },
     clock: { currentDate: date, daysInOffice: 0, turnNumber: 1, speed: 'paused' },
@@ -408,7 +419,7 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
     economy: econ,
     social: soc,
     security: sec,
-    countries: COUNTRIES,
+    countries: withForeignLeaderTerms(COUNTRIES),
     companies: COMPANIES,
     intlOrgs: INTL_ORGS,
     international: { ...INITIAL_INTERNATIONAL },
@@ -504,6 +515,7 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
     ],
     treaties: [],
     laws: KOREAN_LAWS,
+    subRegions: buildSubRegions(),
   };
 }
 
@@ -583,7 +595,7 @@ export function buildNewTermState(
 
   return {
     ...prev,
-    version: 11,
+    version: 12,
     president: newPresident,
     clock: { currentDate: startDate, daysInOffice: 0, turnNumber: 1, speed: 'paused' },
     approval: buildApproval(newProfile.party, baseApproval),
@@ -628,6 +640,7 @@ export function buildNewTermState(
     worldEvents: prev.worldEvents.slice(0, 10),  // 최근 10개 인수
     treaties: prev.treaties,
     laws: prev.laws,
+    subRegions: prev.subRegions,
     // 유지: countries, companies, intlOrgs, international, adminBodies, buildings, parties, regions, elections, cultural, pastTerms, settings
   };
 }

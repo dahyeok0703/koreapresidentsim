@@ -371,7 +371,33 @@ actions: [
   // 법률 폐지
   { "type": "REMOVE_LAW", "params": { "nameMatch": "법률명 일부" } },
   // 법률 개정 (요지·논쟁도 갱신)
-  { "type": "AMEND_LAW", "params": { "nameMatch": "...", "newDesc": "(선택) 개정 후 요지", "newControversy": 50 } }
+  { "type": "AMEND_LAW", "params": { "nameMatch": "...", "newDesc": "(선택) 개정 후 요지", "newControversy": 50 } },
+
+  // 시군구 신설 (대통령이 "신도시 X시 승격" "Y구 신설" 지시할 때)
+  { "type": "ADD_SUBREGION", "params": {
+      "parentRegion": "SEOUL|BUSAN|...|JEJU",
+      "name": "신규 시군구명",
+      "type": "시|군|자치구|일반구|읍|면|특별자치시",
+      "population": 만명,
+      "area": ㎢,
+      "mayor": "초대 단체장명",
+      "mayorParty": "DPK|PPP|RKP|...",
+      "industries": ["..."],
+      "speciality": "..."
+  } },
+  // 시군구 폐지
+  { "type": "REMOVE_SUBREGION", "params": { "nameMatch": "..." } },
+  // 시군구 분할 ("화성시를 동탄시·서화성시로 분할")
+  { "type": "SPLIT_SUBREGION", "params": {
+      "sourceMatch": "화성시",
+      "newName1": "동탄시", "newName2": "서화성시",
+      "splitRatio": 0.55     // 첫 번째가 가져갈 인구·면적 비율 (0.1~0.9)
+  } },
+  // 시군구 통합 ("창원시 5개 구 통합")
+  { "type": "MERGE_SUBREGION", "params": {
+      "nameMatches": ["의창구","성산구","마산합포구","마산회원구","진해구"],
+      "newName": "창원특례시"
+  } }
 ]
 
 [액션 사용 규칙]

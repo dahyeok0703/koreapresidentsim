@@ -716,6 +716,70 @@ export function applyAIActions(state: GameState, actions: AIAction[] | undefined
           log.push(`📕 법률 폐지: "${nameMatch}" 매칭`);
           break;
         }
+        case 'ADD_SUBREGION': {
+          const p = act.params || {};
+          const region = String(p.parentRegion || 'SEOUL');
+          const sr: any = {
+            id: genId('sub'),
+            name: String(p.name || '신규 시군구'),
+            parentRegion: region,
+            type: (p.type || '시') as any,
+            population: Number(p.population) || 5,
+            area: Number(p.area) || 100,
+            mayor: String(p.mayor || '신임 단체장'),
+            mayorParty: (p.mayorParty || 'IND') as any,
+            industries: Array.isArray(p.industries) ? p.industries : [],
+            speciality: p.speciality,
+            notable: p.notable,
+          };
+          s = { ...s, subRegions: [sr, ...s.subRegions] };
+          log.push(`🆕 시군구 신설: ${sr.name} (${region})`);
+          break;
+        }
+        case 'REMOVE_SUBREGION': {
+          const nameMatch = String(act.params?.nameMatch || '');
+          if (!nameMatch) break;
+          const before = s.subRegions.length;
+          s = { ...s, subRegions: s.subRegions.filter(r => !r.name.includes(nameMatch)) };
+          log.push(`🗑️ 시군구 ${before - s.subRegions.length}개 폐지: "${nameMatch}"`);
+          break;
+        }
+        case 'SPLIT_SUBREGION': {
+          const p = act.params || {};
+          const sourceMatch = String(p.sourceMatch || '');
+          const newName1 = String(p.newName1 || '');
+          const newName2 = String(p.newName2 || '');
+          const ratio = Math.max(0.1, Math.min(0.9, Number(p.splitRatio) || 0.5));
+          if (!sourceMatch || !newName1 || !newName2) break;
+          const source = s.subRegions.find(r => r.name.includes(sourceMatch));
+          if (!source) { log.push(`⚠️ 분할 대상 시군구를 찾지 못함: ${sourceMatch}`); break; }
+          const part1: any = { ...source, id: genId('sub'), name: newName1,
+            population: Math.round(source.population * ratio * 10) / 10,
+            area: Math.round(source.area * ratio) };
+          const part2: any = { ...source, id: genId('sub'), name: newName2,
+            population: Math.round(source.population * (1 - ratio) * 10) / 10,
+            area: Math.round(source.area * (1 - ratio)) };
+          s = { ...s, subRegions: [part1, part2, ...s.subRegions.filter(r => r.id !== source.id)] };
+          log.push(`✂️ 시군구 분할: ${source.name} → ${newName1} + ${newName2}`);
+          break;
+        }
+        case 'MERGE_SUBREGION': {
+          const p = act.params || {};
+          const nameMatches: string[] = Array.isArray(p.nameMatches) ? p.nameMatches : [];
+          const newName = String(p.newName || '');
+          if (nameMatches.length < 2 || !newName) break;
+          const targets = s.subRegions.filter(r => nameMatches.some(m => r.name.includes(m)));
+          if (targets.length < 2) { log.push(`⚠️ 통합 대상이 부족함: ${nameMatches.join(', ')}`); break; }
+          const merged: any = {
+            ...targets[0], id: genId('sub'), name: newName,
+            population: targets.reduce((a, t) => a + t.population, 0),
+            area: targets.reduce((a, t) => a + t.area, 0),
+            industries: Array.from(new Set(targets.flatMap(t => t.industries))),
+          };
+          s = { ...s, subRegions: [merged, ...s.subRegions.filter(r => !targets.includes(r))] };
+          log.push(`🔗 시군구 통합: ${targets.map(t => t.name).join(' + ')} → ${newName}`);
+          break;
+        }
         case 'AMEND_LAW': {
           const p = act.params || {};
           const nameMatch = String(p.nameMatch || '');

@@ -586,6 +586,7 @@ function DiplomacyTab() {
             <Stat label="수도"      value={picked.capital} />
             <Stat label="정상"      value={picked.leader} />
             <Stat label="직위"      value={picked.leaderTitle} />
+            {picked.termEnd && <Stat label="임기 만료" value={picked.termEnd} color={picked.termEnd >= '2099' ? 'text-red-300' : 'text-amber-300'} />}
             <Stat label="정부형태"  value={picked.government} />
             <Stat label="인구"      value={`${fmtInt(picked.population)}만`} />
             <Stat label="면적"      value={`${fmtInt(picked.area / 1000)}천㎢`} />
@@ -1013,10 +1014,14 @@ function RegionsTab() {
   const approval = useGame(s => s.state!.approval);
   const parties = useGame(s => s.state!.parties);
   const buildings = useGame(s => s.state!.buildings);
+  const subRegions = useGame(s => s.state!.subRegions);
   const issueDecision = useGame(s => s.issueDecision);
   const busy = useGame(s => s.busy);
   const [pickedId, setPicked] = useState<RegionId | null>(null);
+  const [subFilter, setSubFilter] = useState('');
   const picked = regions.find(r => r.id === pickedId);
+  const subsOfPicked = picked ? subRegions.filter(s => s.parentRegion === picked.id) : [];
+  const filteredSubs = subsOfPicked.filter(s => !subFilter || s.name.includes(subFilter) || s.mayor.includes(subFilter));
   return (
     <>
       <Panel title={`행정구역 (17개 광역단체)`}>
@@ -1087,6 +1092,40 @@ function RegionsTab() {
                 {buildings.filter(b => b.region === picked.id).slice(0, 20).map(b => (
                   <div key={b.id}>· {b.name} <span className="text-[10px] text-slate-500">({b.category})</span></div>
                 ))}
+              </div>
+            </div>
+            <div className="col-span-2">
+              <div className="text-[10px] text-slate-500 mb-1">
+                관할 시군구 ({subsOfPicked.length}개 · 총인구 {subsOfPicked.reduce((a, s) => a + s.population, 0).toFixed(0)}만)
+              </div>
+              <input className="input w-full text-xs mb-1" placeholder="시군구·단체장 검색"
+                value={subFilter} onChange={e => setSubFilter(e.target.value)} />
+              <div className="max-h-64 overflow-y-auto space-y-1">
+                {filteredSubs.map(sr => {
+                  const party = parties.find(p => p.id === sr.mayorParty);
+                  return (
+                    <div key={sr.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-[11px]">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1 min-w-0">
+                          <span className="w-2 h-2 rounded shrink-0" style={{ background: party?.color }} />
+                          <span className="text-slate-200 font-semibold truncate">{sr.name}</span>
+                          <Chip>{sr.type}</Chip>
+                        </div>
+                        <span className="text-[10px] text-slate-500 shrink-0">{sr.population}만 · {sr.area}㎢</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        {sr.type === '자치구' || sr.type === '일반구' ? '구청장' : sr.type === '시' || sr.type === '특별자치시' ? '시장' : '군수'} <span className="text-slate-200">{sr.mayor}</span> ({party?.shortName ?? '-'})
+                      </div>
+                      {sr.industries.length > 0 && (
+                        <div className="text-[10px] text-slate-500 mt-0.5">{sr.industries.join(' · ')}</div>
+                      )}
+                      {sr.notable && <div className="text-[10px] text-emerald-300/80 mt-0.5">{sr.notable}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1 leading-relaxed">
+                💡 채팅으로 시군구 신설·분할·통합 가능: "화성시를 동탄시·서화성시로 분할" · "창원시 5개 구 통합" · "광명·시흥·안산 통합 광역시"
               </div>
             </div>
           </div>

@@ -379,6 +379,8 @@ export interface Country {
   koreanResidents: number;    // 명
   treaties: string[];
   recentEvents: string[];
+  termEnd?: string;            // 정상 임기 만료 (YYYY-MM-DD)
+  successorIndex?: number;     // 후임 풀에서 사용한 인덱스
 }
 
 // ---------------- 국제기구 ----------------
@@ -751,6 +753,7 @@ export interface GameState {
   worldEvents: WorldEvent[];
   treaties: Treaty[];
   laws: import('../data/laws').Law[];
+  subRegions: import('../data/subRegions').SubRegion[];
 }
 
 // ---------------- 국제 뉴스 피드 (한국 외 국가들의 능동 행동) ----------------
@@ -808,7 +811,8 @@ export type AIActionType =
   | 'CREATE_COUNTRY' | 'ANNEX_COUNTRY' | 'CHANGE_LEADER'
   | 'ADD_TREATY'   | 'BEGIN_SPECIAL_OP'
   | 'CREATE_GOV_BODY' | 'DISSOLVE_GOV_BODY'
-  | 'ADD_LAW'      | 'REMOVE_LAW'      | 'AMEND_LAW';
+  | 'ADD_LAW'      | 'REMOVE_LAW'      | 'AMEND_LAW'
+  | 'ADD_SUBREGION' | 'REMOVE_SUBREGION' | 'SPLIT_SUBREGION' | 'MERGE_SUBREGION';
 
 export interface AIAction {
   type: AIActionType;
