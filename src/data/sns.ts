@@ -17,6 +17,13 @@ export function buildInitialSns(presIdeology: number): SnsState {
       { id: 'DCINSIDE',    name: '디시인사이드',  monthlyUsers: 750,  mainAge: '20-40대 남', bias: 30,  presidentFavor: fav(30),   desc: '남초 커뮤니티. 보수·반페미 정서.' },
       { id: 'FMKOREA',     name: '에펨코리아',    monthlyUsers: 650,  mainAge: '20-30대 남', bias: 40,  presidentFavor: fav(40),   desc: '20-30 남성 보수 커뮤니티.' },
       { id: 'CLIEN',       name: '클리앙',        monthlyUsers: 180,  mainAge: '30-40대',  bias: -50,  presidentFavor: fav(-50),  desc: 'IT/정치 진보 커뮤니티.' },
+      // === 해외 커뮤니티 (한국어 번역 댓글로 표시) ===
+      { id: 'REDDIT',      name: 'Reddit r/korea',monthlyUsers: 800,  mainAge: '20-40대 영어권', bias: -10, presidentFavor: fav(-10), desc: '영미권 한국 관심층. r/korea·r/korean·r/worldnews.' },
+      { id: 'PTT',         name: 'PTT (대만)',     monthlyUsers: 250,  mainAge: '20-40대 대만',   bias: 0,    presidentFavor: 0,         desc: '대만 최대 BBS. 한국 정치·K-POP 관심.' },
+      { id: 'BAIDU',       name: '바이두 톄바',    monthlyUsers: 1800, mainAge: '20-40대 중국',   bias: 20,   presidentFavor: fav(20),   desc: '중국 최대 커뮤니티. 반한·친한 양분.' },
+      { id: 'WEIBO',       name: '웨이보 (微博)',  monthlyUsers: 5800, mainAge: '20-40대 중국',   bias: 15,   presidentFavor: fav(15),   desc: '중국 트위터급. K-콘텐츠·한중 이슈 활발.' },
+      { id: 'YAHOO_JP',    name: 'Yahoo! Japan 뉴스 댓글', monthlyUsers: 7800, mainAge: '30-50대 일본', bias: 35, presidentFavor: fav(35), desc: '일본 최대 뉴스 포털. 한국 이슈에 반한 정서 강함.' },
+      { id: 'X_INTL',      name: 'X (해외)',       monthlyUsers: 4500, mainAge: '전 세계',         bias: -5,   presidentFavor: fav(-5),   desc: '해외 인플루언서·기자·외교 전문가 의견.' },
     ],
     hotKeywords: [
       { keyword: '대통령 취임',     volume: 480, sentiment: 35 },

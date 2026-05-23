@@ -582,7 +582,8 @@ export interface SnsState {
 }
 
 export interface SnsPlatform {
-  id: 'X' | 'INSTAGRAM' | 'FACEBOOK' | 'YOUTUBE' | 'KAKAO' | 'NAVER_CAFE' | 'DCINSIDE' | 'FMKOREA' | 'CLIEN' | 'THREADS' | 'NAVER_BLOG';
+  id: 'X' | 'INSTAGRAM' | 'FACEBOOK' | 'YOUTUBE' | 'KAKAO' | 'NAVER_CAFE' | 'DCINSIDE' | 'FMKOREA' | 'CLIEN' | 'THREADS' | 'NAVER_BLOG'
+    | 'REDDIT' | 'PTT' | 'BAIDU' | 'YAHOO_JP' | 'X_INTL' | 'WEIBO';
   name: string;
   monthlyUsers: number;
   mainAge: string;
@@ -749,6 +750,7 @@ export interface GameState {
   pastTerms: TermEvaluation[];
   worldEvents: WorldEvent[];
   treaties: Treaty[];
+  laws: import('../data/laws').Law[];
 }
 
 // ---------------- 국제 뉴스 피드 (한국 외 국가들의 능동 행동) ----------------
@@ -803,7 +805,10 @@ export type AIActionType =
   | 'ADD_UNIT'     | 'REMOVE_UNIT'
   | 'ADD_BASE'     | 'REMOVE_BASE'
   | 'SIGN_TREATY'  | 'BEGIN_WAR'      | 'END_WAR'
-  | 'CREATE_COUNTRY' | 'ANNEX_COUNTRY' | 'CHANGE_LEADER';
+  | 'CREATE_COUNTRY' | 'ANNEX_COUNTRY' | 'CHANGE_LEADER'
+  | 'ADD_TREATY'   | 'BEGIN_SPECIAL_OP'
+  | 'CREATE_GOV_BODY' | 'DISSOLVE_GOV_BODY'
+  | 'ADD_LAW'      | 'REMOVE_LAW'      | 'AMEND_LAW';
 
 export interface AIAction {
   type: AIActionType;

@@ -335,7 +335,43 @@ actions: [
   { "type": "END_WAR", "params": { "warId": "..." } },
 
   // 외국 지도자 교체 (시뮬레이션 사건 발생 시)
-  { "type": "CHANGE_LEADER", "params": { "countryId": "JP", "newLeader": "..." } }
+  { "type": "CHANGE_LEADER", "params": { "countryId": "JP", "newLeader": "..." } },
+
+  // 평시 외교 조약/협정 체결 (전쟁 X. "X국과 자유무역협정 체결" "Y국과 안보협력 양해각서")
+  { "type": "ADD_TREATY", "params": { "countryId": "VN", "name": "한-베트남 디지털경제동반자협정(DEPA)" } },
+
+  // 평시 군사작전 (전면전 아닌 정밀타격·특수작전·사이버, 미국의 대 베네수엘라 공습 같은)
+  { "type": "BEGIN_SPECIAL_OP", "params": {
+      "name": "작전명 (예: 응징의 일격)",
+      "target": "대상 (예: 평양 ICBM 발사장)",
+      "opType": "정밀타격|특수작전|사이버|봉쇄|해상차단",
+      "targetCountryId": "NK",
+      "notes": "추가 메모"
+  } },
+
+  // 정부기관 신설 (대통령이 "X 청 신설" "Y 위원회 설치"를 지시할 때)
+  { "type": "CREATE_GOV_BODY", "params": {
+      "id": "(선택, 미입력 시 자동)",
+      "name": "기관 정식 명칭",
+      "category": "부|처|청|위원회|독립기관|대통령실|국무총리실",
+      "parentId": "(선택, 부처 산하 청·실인 경우 부처 id)",
+      "ideologyImportance": 30
+  } },
+  // 정부기관 해체 (id 또는 명칭 매칭)
+  { "type": "DISSOLVE_GOV_BODY", "params": { "id": "...", "nameMatch": "..." } },
+
+  // 법률 신규 제정 (대통령이 "X법 제정 추진" → 국회 통과 가정 시)
+  { "type": "ADD_LAW", "params": {
+      "name": "정식 법률명",
+      "abbrev": "(선택, 약칭)",
+      "category": "헌법|민사|형사|상사·경제|행정·공무원|재정·세제|금융·증권|노동|교육|복지·의료|주거·국토|환경|문화·체육|국방·안보|외교·통상|선거·정당|사법·법무|과학기술·정보통신|농수산·식품|교통·통신|특별법|인권·평등|기타",
+      "desc": "법률 요지",
+      "controversyLevel": 0~100
+  } },
+  // 법률 폐지
+  { "type": "REMOVE_LAW", "params": { "nameMatch": "법률명 일부" } },
+  // 법률 개정 (요지·논쟁도 갱신)
+  { "type": "AMEND_LAW", "params": { "nameMatch": "...", "newDesc": "(선택) 개정 후 요지", "newControversy": 50 } }
 ]
 
 [액션 사용 규칙]

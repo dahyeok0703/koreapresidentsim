@@ -23,6 +23,7 @@ const TABS = [
   { id: 'COMPANIES',    label: '기업',     icon: '🏭' },
   { id: 'CULTURE',      label: '문화',     icon: '🎭' },
   { id: 'ELECTIONS',    label: '선거',     icon: '🗳️' },
+  { id: 'LAWS',         label: '법령',     icon: '📚' },
   { id: 'EVENTS',       label: '사건',     icon: '📜' },
   { id: 'INTL',         label: '국제',     icon: '🌍' },
   { id: 'MEDIA',        label: '언론',     icon: '📰' },
@@ -62,6 +63,7 @@ export default function RightTabs() {
         {tab === 'COMPANIES' && <CompaniesTab />}
         {tab === 'CULTURE'   && <CultureTab />}
         {tab === 'ELECTIONS' && <ElectionsTab />}
+        {tab === 'LAWS'      && <LawsTab />}
         {tab === 'EVENTS'    && <EventsTab />}
         {tab === 'INTL'      && <IntlTab />}
         {tab === 'MEDIA'     && <MediaTab />}
@@ -341,13 +343,7 @@ function SocialTab() {
 // ============ 군사 ============
 function MilitaryTab() {
   const sec = useGame(s => s.state!.security);
-  const addWeapon = useGame(s => s.addWeapon);
-  const removeWeapon = useGame(s => s.removeWeapon);
-  const changeWeaponCount = useGame(s => s.changeWeaponCount);
-  const [section, setSection] = useState<'STATUS' | 'WEAPONS' | 'BASES' | 'UNITS' | 'PROCURE'>('STATUS');
-  const [newW, setNewW] = useState<{ category: WeaponEntry['category']; name: string; count: number; origin: string }>({
-    category: '전투기', name: '', count: 1, origin: '미국',
-  });
+  const [section, setSection] = useState<'STATUS' | 'WEAPONS' | 'BASES' | 'UNITS' | 'KCG'>('STATUS');
   const defconColor = sec.defconLevel <= 2 ? 'text-red-400' : sec.defconLevel <= 3 ? 'text-orange-400' : 'text-emerald-400';
 
   const weaponsByCat: Record<string, typeof sec.weapons> = {};
@@ -360,10 +356,10 @@ function MilitaryTab() {
   return (
     <>
       <div className="flex gap-1">
-        {(['STATUS','WEAPONS','BASES','UNITS','PROCURE'] as const).map(t => (
+        {(['STATUS','WEAPONS','BASES','UNITS','KCG'] as const).map(t => (
           <button key={t} onClick={() => setSection(t)}
             className={`text-[10px] px-2 py-1 rounded ${section === t ? 'bg-rok-blue text-white' : 'bg-slate-800 text-slate-300'}`}>
-            {t === 'STATUS' ? '태세' : t === 'WEAPONS' ? '무기' : t === 'BASES' ? '기지' : t === 'UNITS' ? '부대' : '도입/폐기'}
+            {t === 'STATUS' ? '태세' : t === 'WEAPONS' ? '무기' : t === 'BASES' ? '기지' : t === 'UNITS' ? '부대' : '🌊 해경'}
           </button>
         ))}
       </div>
@@ -410,7 +406,7 @@ function MilitaryTab() {
       )}
 
       {section === 'WEAPONS' && (
-        <Panel title={`무기 인벤토리 (${sec.weapons.length}종)`}>
+        <Panel title={`무기 인벤토리 (${sec.weapons.length}종)`} right={<span className="text-[10px] text-slate-500">※ 도입·개발은 채팅으로만</span>}>
           {Object.entries(weaponsByCat).map(([cat, items]) => (
             <div key={cat} className="mb-2">
               <div className="text-[10px] text-slate-500 mb-0.5 sticky top-0 bg-slate-900/80 backdrop-blur-sm">{cat} ({items.length}종)</div>
@@ -418,61 +414,20 @@ function MilitaryTab() {
                 {items.map(w => (
                   <div key={w.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
                     <div className="flex items-center justify-between">
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <div className="text-slate-200">{w.name}</div>
                         <div className="text-[10px] text-slate-500">{w.origin} · {w.status}{w.notes ? ` · ${w.notes}` : ''}</div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => changeWeaponCount(w.id, -10)} className="text-[10px] px-1 bg-red-900/50 rounded">-10</button>
-                        <button onClick={() => changeWeaponCount(w.id, -1)} className="text-[10px] px-1 bg-red-900/50 rounded">-1</button>
-                        <span className="font-mono w-12 text-center">{fmtInt(w.count)}</span>
-                        <button onClick={() => changeWeaponCount(w.id, 1)} className="text-[10px] px-1 bg-emerald-900/50 rounded">+1</button>
-                        <button onClick={() => changeWeaponCount(w.id, 10)} className="text-[10px] px-1 bg-emerald-900/50 rounded">+10</button>
-                        <button onClick={() => removeWeapon(w.id)} className="text-[10px] text-red-400 ml-1">×</button>
-                      </div>
+                      <span className="font-mono text-amber-300 w-16 text-right shrink-0">{fmtInt(w.count)}기</span>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
           ))}
-        </Panel>
-      )}
-
-      {section === 'PROCURE' && (
-        <Panel title="신규 도입 / 폐기">
-          <div className="space-y-1.5">
-            <div>
-              <label className="block text-[10px] text-slate-400 mb-0.5">분류</label>
-              <select className="input w-full text-xs" value={newW.category}
-                onChange={e => setNewW({ ...newW, category: e.target.value as any })}>
-                {['전차','장갑차','자주포','견인포','다연장','전투기','공격기','수송기','헬기','구축함','잠수함','호위함','미사일','방공','레이더','드론','기타'].map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-[10px] text-slate-400 mb-0.5">명칭</label>
-              <input className="input w-full text-xs" placeholder="예: KF-21 보라매 추가분"
-                value={newW.name} onChange={e => setNewW({ ...newW, name: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-1">
-              <div>
-                <label className="block text-[10px] text-slate-400 mb-0.5">수량</label>
-                <input className="input w-full text-xs" type="number" value={newW.count}
-                  onChange={e => setNewW({ ...newW, count: Number(e.target.value) })} />
-              </div>
-              <div>
-                <label className="block text-[10px] text-slate-400 mb-0.5">원산지</label>
-                <input className="input w-full text-xs" value={newW.origin}
-                  onChange={e => setNewW({ ...newW, origin: e.target.value })} />
-              </div>
-            </div>
-            <button onClick={() => {
-              if (!newW.name) return alert('명칭 필요');
-              addWeapon({ ...newW, status: '도입중' as any, notes: '신규 도입' });
-              setNewW({ ...newW, name: '', count: 1 });
-            }} className="btn-primary w-full text-xs">+ 도입 명령</button>
+          <div className="text-[10px] text-slate-500 mt-2 leading-relaxed">
+            ⚙️ 무기 추가/폐기는 채팅 결정 모드로만 가능합니다.
+            <br />예: "F-35A 20기 추가 도입" · "KF-21 보라매 20기 양산 명령" · "M48 전차 200기 퇴역"
           </div>
         </Panel>
       )}
@@ -498,6 +453,52 @@ function MilitaryTab() {
           ))}
         </Panel>
       )}
+
+      {section === 'KCG' && (() => {
+        const kcgWeapons = sec.weapons.filter(w => w.name.includes('[해경]'));
+        const totalShips = kcgWeapons.filter(w => w.category === '기타').reduce((a, w) => a + w.count, 0);
+        const totalAir   = kcgWeapons.filter(w => w.category === '헬기' || w.category === '수송기').reduce((a, w) => a + w.count, 0);
+        return (
+          <>
+            <Panel title="🌊 해양경찰청 (해경)">
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <div className="bg-slate-950/60 rounded p-2 border border-slate-800 text-center">
+                  <div className="text-[10px] text-slate-400">보유 함정</div>
+                  <div className="text-2xl font-bold text-cyan-300">{fmtInt(totalShips)}척</div>
+                </div>
+                <div className="bg-slate-950/60 rounded p-2 border border-slate-800 text-center">
+                  <div className="text-[10px] text-slate-400">항공 전력</div>
+                  <div className="text-2xl font-bold text-cyan-300">{fmtInt(totalAir)}대</div>
+                </div>
+              </div>
+              <Stat label="청장"        value="조지호 (경찰청 청장 겸직 X — 김종욱 해경청장)" />
+              <Stat label="본청"        value="인천광역시 연수구" />
+              <Stat label="조직"        value="5개 지방해양경찰청 + 19개 해양경찰서" />
+              <Stat label="현원"        value="약 14,000명" />
+            </Panel>
+            <Panel title={`해경 전력 (${kcgWeapons.length}종)`}>
+              {kcgWeapons.length === 0 && <div className="text-[11px] text-slate-500">해경 전력이 등록되지 않았습니다.</div>}
+              <div className="space-y-1">
+                {kcgWeapons.map(w => (
+                  <div key={w.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-slate-200">{w.name.replace('[해경] ', '')}</div>
+                        <div className="text-[10px] text-slate-500">{w.origin} · {w.category}{w.notes ? ` · ${w.notes}` : ''}</div>
+                      </div>
+                      <span className="font-mono text-cyan-300 w-16 text-right shrink-0">{fmtInt(w.count)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-2 leading-relaxed">
+                ⚙️ 함정 도입·퇴역은 채팅으로만 가능.
+                <br />예: "해경 5000톤급 대형경비함 2척 추가 발주" · "해경 500톤급 10척 퇴역"
+              </div>
+            </Panel>
+          </>
+        );
+      })()}
 
       {section === 'UNITS' && (
         <Panel title={`부대 편제 (${sec.units.length}개)`}>
@@ -1491,6 +1492,92 @@ function ElectionsTab() {
                 <span className="text-slate-500">{e.date} ✓</span>
               </div>
               <div className="text-slate-200">{e.name}</div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    </>
+  );
+}
+
+// ============ 법령 ============
+function LawsTab() {
+  const laws = useGame(s => s.state!.laws);
+  const issueDecision = useGame(s => s.issueDecision);
+  const busy = useGame(s => s.busy);
+  const [filter, setFilter] = useState('');
+  const [cat, setCat] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'REPEALED' | 'AMENDED'>('ACTIVE');
+
+  const categories = Array.from(new Set(laws.map(l => l.category)));
+  const list = laws
+    .filter(l => cat === 'ALL' || l.category === cat)
+    .filter(l => statusFilter === 'ALL' || l.status === statusFilter)
+    .filter(l => !filter ||
+      l.name.includes(filter) ||
+      (l.abbrev?.includes(filter) ?? false) ||
+      l.desc.includes(filter));
+
+  const grouped: Record<string, typeof laws> = {};
+  for (const l of list) (grouped[l.category] ??= []).push(l);
+
+  const statusColor: Record<string, string> = {
+    ACTIVE:   'text-emerald-300 border-emerald-700 bg-emerald-900/30',
+    REPEALED: 'text-red-300 border-red-700 bg-red-900/30',
+    AMENDED:  'text-yellow-300 border-yellow-700 bg-yellow-900/30',
+    PROPOSED: 'text-blue-300 border-blue-700 bg-blue-900/30',
+  };
+
+  return (
+    <>
+      <Panel title={`대한민국 법령 (${list.length}/${laws.length}건)`} right={<span className="text-[10px] text-slate-500">채팅으로 제정·폐지·개정</span>}>
+        <input className="input w-full text-xs mb-2" placeholder="법령명·약칭·내용 검색..."
+          value={filter} onChange={e => setFilter(e.target.value)} />
+        <div className="flex gap-1 flex-wrap mb-1">
+          {(['ACTIVE','AMENDED','REPEALED','ALL'] as const).map(s => (
+            <button key={s} onClick={() => setStatusFilter(s)}
+              className={`text-[10px] px-1.5 py-0.5 rounded ${statusFilter === s ? 'bg-blue-700 text-white' : 'bg-slate-800 text-slate-300'}`}>
+              {s === 'ACTIVE' ? '시행중' : s === 'AMENDED' ? '개정됨' : s === 'REPEALED' ? '폐지됨' : '전체'}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1 flex-wrap mb-2">
+          <button onClick={() => setCat('ALL')} className={`text-[10px] px-1.5 py-0.5 rounded ${cat === 'ALL' ? 'bg-blue-700 text-white' : 'bg-slate-800 text-slate-300'}`}>전체</button>
+          {categories.map(c => (
+            <button key={c} onClick={() => setCat(c)} className={`text-[10px] px-1.5 py-0.5 rounded ${cat === c ? 'bg-blue-700 text-white' : 'bg-slate-800 text-slate-300'}`}>{c}</button>
+          ))}
+        </div>
+        <div className="text-[10px] text-slate-500 mb-1">
+          📘 신규 제정·개정·폐지는 채팅으로 결정하세요. 예: "차별금지법 제정 추진" · "국가보안법 폐지" · "최저임금법 개정"
+        </div>
+        <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+          {Object.entries(grouped).map(([category, items]) => (
+            <div key={category}>
+              <div className="text-[10px] text-slate-500 mb-0.5 sticky top-0 bg-slate-900/80 backdrop-blur-sm">
+                {category} ({items.length})
+              </div>
+              <div className="space-y-1">
+                {items.map(l => (
+                  <div key={l.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="font-semibold text-slate-100">{l.name}</span>
+                      <span className={`text-[9px] px-1 py-0.5 rounded border ${statusColor[l.status]}`}>{l.status}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      {l.abbrev && `[${l.abbrev}] · `}
+                      제정 {l.enacted}년 · 최종개정 {l.lastAmended}년
+                      {l.controversyLevel >= 50 && <span className="text-orange-300 ml-1">· 논쟁도 {l.controversyLevel}</span>}
+                    </div>
+                    <div className="text-[11px] text-slate-300 mt-0.5">{l.desc}</div>
+                    <div className="flex gap-1 mt-1">
+                      <button disabled={!!busy} onClick={() => issueDecision(`${l.name}을(를) 개정한다. 시대 변화에 맞춰 핵심 조항을 정비한다.`, `${l.name} 개정`)}
+                        className="text-[10px] text-yellow-400 hover:text-yellow-300 disabled:opacity-40">개정</button>
+                      <button disabled={!!busy} onClick={() => issueDecision(`${l.name}을(를) 폐지한다.`, `${l.name} 폐지`)}
+                        className="text-[10px] text-red-400 hover:text-red-300 disabled:opacity-40">폐지</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>

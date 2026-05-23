@@ -50,6 +50,19 @@ const ROWS: Row[] = [
   ['INSTAGRAM', '서울맘카페',         '@seoulmom_cafe', '5년 동안 또 부동산 폭등하면 어쩌죠 ㅠㅠ',                                                  2.3,  0.2,  1.1,  -25, 'CONS' ],
   ['KAKAO',     '직장인 카페',        '-',              '주 52시간 다시 풀린대요... 우리 회사도 야근 늘듯.',                                        0.6,  0.0,  0.5,  -40, 'CONS' ],
   ['X',         '청년이정민',         '@youth_jm',      '청년 정책 다 사라지는 거 아닌가요?',                                                        0.4,  0.1,  0.3,  -25, 'CONS' ],
+
+  // ─── 해외 커뮤니티 (한국어 번역 댓글) ───
+  ['REDDIT',   'r/korea 사용자',     '-',              '[번역·Reddit] South Korea swears in new president. Hopefully chaebol reform finally happens.', 0.8, 0.1, 0.5,  20, 'ANY' ],
+  ['REDDIT',   'r/worldnews 사용자', '-',              '[번역·Reddit] Trump might use this to push tariffs on Korea further. Geopolitical mess.',     1.3, 0.2, 0.8, -10, 'ANY' ],
+  ['PTT',      '대만 PTT 시사판',    '-',              '[번역·PTT 八卦版] 한국 새 대통령 → 대만 안보에 어떤 영향? 친중인지 친미인지 봐야.',           0.4, 0.0, 0.3,   0, 'ANY' ],
+  ['BAIDU',    '바이두 톄바 韩国吧', '-',              '[번역·바이두] 한국 새 대통령이 시 주석을 만나길 기대한다. 사드 잔영 끝내야.',                  0.7, 0.1, 0.4,  10, 'ANY' ],
+  ['BAIDU',    '바이두 톄바 韩国吧', '-',              '[번역·바이두] 또 친미 정권인가? 한국은 미·중 사이에서 줄타기만 한다.',                          0.6, 0.05, 0.5, -15, 'CONS' ],
+  ['WEIBO',    '웨이보 K-POP 팬',    '-',              '[번역·웨이보] 새 한국 대통령 K-POP 좋아하시는지? 비자 면제 좀!',                              1.5, 0.3, 0.6,  25, 'ANY' ],
+  ['YAHOO_JP', '야후재팬 댓글',      '-',              '[번역·Yahoo! Japan] 또 반일 정권 시작인가? 한일 관계는 또 후퇴할 듯.',                        2.5, 0.5, 1.2, -45, 'PROG' ],
+  ['YAHOO_JP', '야후재팬 댓글',      '-',              '[번역·Yahoo! Japan] 이번에는 일본과 잘 지내려는 모양. 다행이다.',                              1.8, 0.3, 0.9,  25, 'CONS' ],
+  ['YAHOO_JP', '야후재팬 댓글',      '-',              '[번역·Yahoo! Japan] 위안부·강제동원 다시 들고 나오면 G7 회담 거부해야.',                       2.0, 0.4, 1.0, -40, 'PROG' ],
+  ['X_INTL',   '@AsiaCorrespondent', '@AsiaCorrespondent','[번역·X(영어)] Korea\'s new president inherits a deeply divided society and a hostile North.', 1.0, 0.3, 0.3, -5, 'ANY' ],
+  ['X_INTL',   '@KoreaWatcher',      '@KoreaWatcher',  '[번역·X(영어)] Watch what they do on prosecution reform — that\'s the litmus test.',           0.6, 0.1, 0.2, 10, 'ANY' ],
 ];
 
 export function buildInitialSnsPosts(presIdeology: number): SnsPost[] {

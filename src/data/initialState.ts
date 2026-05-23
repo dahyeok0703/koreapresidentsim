@@ -18,6 +18,7 @@ import { buildInitialArticles } from './articles';
 import { ADMIN_BODIES, INITIAL_ADMIN_TASKS, NOMINEE_POOL } from './adminBodies';
 import { buildElections } from './elections';
 import { INITIAL_CULTURAL } from './cultural';
+import { KOREAN_LAWS } from './laws';
 import { genId, randomKoreanName } from '../utils/id';
 export { genId, randomKoreanName };
 
@@ -398,7 +399,7 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
   const jud = INITIAL_JUDICIARY;
 
   return {
-    version: 10,
+    version: 11,
     createdAt: new Date().toISOString(),
     president: { ...p, termEndsAt: termEndStr },
     clock: { currentDate: date, daysInOffice: 0, turnNumber: 1, speed: 'paused' },
@@ -502,6 +503,7 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
       },
     ],
     treaties: [],
+    laws: KOREAN_LAWS,
   };
 }
 
@@ -581,7 +583,7 @@ export function buildNewTermState(
 
   return {
     ...prev,
-    version: 10,
+    version: 11,
     president: newPresident,
     clock: { currentDate: startDate, daysInOffice: 0, turnNumber: 1, speed: 'paused' },
     approval: buildApproval(newProfile.party, baseApproval),
@@ -625,6 +627,7 @@ export function buildNewTermState(
     },
     worldEvents: prev.worldEvents.slice(0, 10),  // 최근 10개 인수
     treaties: prev.treaties,
+    laws: prev.laws,
     // 유지: countries, companies, intlOrgs, international, adminBodies, buildings, parties, regions, elections, cultural, pastTerms, settings
   };
 }

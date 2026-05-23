@@ -603,6 +603,140 @@ export function applyAIActions(state: GameState, actions: AIAction[] | undefined
           log.push(`👤 지도자 교체: ${p.countryId} → ${p.newLeader}`);
           break;
         }
+        case 'ADD_TREATY': {
+          // 평시 외교 조약/협정 등록 (전쟁 X)
+          const p = act.params || {};
+          const cid = String(p.countryId || '');
+          const name = String(p.name || '');
+          if (!cid || !name) break;
+          s = {
+            ...s,
+            countries: s.countries.map(c => c.id === cid
+              ? { ...c, treaties: [name, ...c.treaties].slice(0, 12), recentEvents: [`${name} 체결`, ...c.recentEvents].slice(0, 5) }
+              : c),
+          };
+          log.push(`📜 조약/협정 등록: ${cid} — ${name}`);
+          break;
+        }
+        case 'BEGIN_SPECIAL_OP': {
+          // 평시 군사작전 (전면전 아님, 정밀타격·특수작전·사이버 등)
+          const p = act.params || {};
+          const opName = String(p.name || '특수작전');
+          const target = String(p.target || '미상');
+          const opType = String(p.opType || '정밀타격');
+          const targetCountry = String(p.targetCountryId || '');
+          if (targetCountry) {
+            s = {
+              ...s,
+              countries: s.countries.map(c => c.id === targetCountry
+                ? { ...c, relation: Math.max(-100, c.relation - 8), recentEvents: [`${opName} 피격`, ...c.recentEvents].slice(0, 5) }
+                : c),
+            };
+          }
+          s = {
+            ...s,
+            events: [{
+              id: genId('evt'),
+              date: s.clock.currentDate,
+              category: 'SECURITY' as const,
+              severity: 'MAJOR' as const,
+              headline: `[군사작전] ${opName} — ${target} 타격`,
+              body: `${opType} 형식으로 ${target}에 대한 ${opName}이 실행됐다. ${p.notes ?? ''}`,
+              source: '국방부 / 합참',
+              resolved: true,
+            } as GameEvent, ...s.events].slice(0, 200),
+          };
+          log.push(`💥 군사작전: ${opName} (${opType} · ${target})`);
+          break;
+        }
+        case 'CREATE_GOV_BODY': {
+          const p = act.params || {};
+          const id = String(p.id || ('CUSTOM_' + genId('gb').slice(-6).toUpperCase()));
+          if (s.adminBodies.find(b => b.id === id)) break;
+          s = {
+            ...s,
+            adminBodies: [
+              ...s.adminBodies,
+              {
+                id: id as any,
+                name: String(p.name || '신규 기관'),
+                category: (p.category || '청') as any,
+                parentId: p.parentId,
+                ideologyImportance: Number(p.ideologyImportance) || 30,
+              },
+            ],
+          };
+          log.push(`🏢 정부기관 신설: ${p.name}`);
+          break;
+        }
+        case 'DISSOLVE_GOV_BODY': {
+          const p = act.params || {};
+          const id = String(p.id || '');
+          const nameMatch = String(p.nameMatch || '');
+          let removed = 0;
+          s = {
+            ...s,
+            adminBodies: s.adminBodies.filter(b => {
+              const hit = (id && b.id === id) || (nameMatch && b.name.includes(nameMatch));
+              if (hit) removed++;
+              return !hit;
+            }),
+            cabinet: s.cabinet.filter(o => {
+              const hit = (id && o.ministry === id) || (nameMatch && o.ministryName.includes(nameMatch));
+              return !hit;
+            }),
+          };
+          log.push(`🗑️ 정부기관 해체: ${removed}개`);
+          break;
+        }
+        case 'ADD_LAW': {
+          const p = act.params || {};
+          const newLaw = {
+            id: 'law_custom_' + genId('l').slice(-6),
+            name: String(p.name || '신규 법률'),
+            abbrev: p.abbrev,
+            category: (p.category || '기타') as any,
+            enacted: Number(p.enacted) || new Date(s.clock.currentDate).getFullYear(),
+            lastAmended: Number(p.lastAmended) || new Date(s.clock.currentDate).getFullYear(),
+            desc: String(p.desc || ''),
+            status: 'ACTIVE' as const,
+            controversyLevel: Number(p.controversyLevel) || 40,
+          };
+          s = { ...s, laws: [newLaw, ...s.laws] };
+          log.push(`📘 법률 신규 제정: ${newLaw.name}`);
+          break;
+        }
+        case 'REMOVE_LAW': {
+          const nameMatch = String(act.params?.nameMatch || '');
+          if (!nameMatch) break;
+          const before = s.laws.length;
+          s = { ...s, laws: s.laws.map(l => l.name.includes(nameMatch)
+            ? { ...l, status: 'REPEALED' as const, lastAmended: new Date(s.clock.currentDate).getFullYear() }
+            : l) };
+          log.push(`📕 법률 폐지: "${nameMatch}" 매칭`);
+          break;
+        }
+        case 'AMEND_LAW': {
+          const p = act.params || {};
+          const nameMatch = String(p.nameMatch || '');
+          if (!nameMatch) break;
+          let n = 0;
+          s = { ...s, laws: s.laws.map(l => {
+            if (l.name.includes(nameMatch)) {
+              n++;
+              return {
+                ...l,
+                status: 'AMENDED' as const,
+                lastAmended: new Date(s.clock.currentDate).getFullYear(),
+                desc: p.newDesc ? String(p.newDesc) : l.desc,
+                controversyLevel: p.newControversy !== undefined ? Number(p.newControversy) : l.controversyLevel,
+              };
+            }
+            return l;
+          }) };
+          log.push(`📝 법률 개정: ${n}건 "${nameMatch}"`);
+          break;
+        }
       }
     } catch (err) {
       log.push(`⚠️ 액션 실행 실패 (${act.type}): ${(err as Error).message}`);
