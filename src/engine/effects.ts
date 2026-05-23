@@ -1,4 +1,6 @@
-import type { GameState, PartialEffects, ApprovalBreakdown } from '../types/game';
+import type { GameState, PartialEffects, ApprovalBreakdown, Bill, GameEvent } from '../types/game';
+import { ALL_BILL_TEMPLATES, AUTONOMOUS_ACTIONS } from '../data/bills';
+import { genId } from '../utils/id';
 
 function clamp(v: number, lo = 0, hi = 100): number {
   return Math.max(lo, Math.min(hi, v));
@@ -231,5 +233,138 @@ function advanceOneDay(state: GameState): GameState {
     return { ...t, progress: Math.round(next * 10) / 10, status: next >= 100 ? 'DONE' : 'PROGRESS' };
   });
 
+  // === 국회 자동 법안 발의 + 자동 표결 ===
+  s = processAssembly(s, newDate);
+
+  // === 자율 행정 (며칠마다 한 번씩 부처/지자체 자체 조치) ===
+  s = processAutonomousActions(s, newDate);
+
   return s;
+}
+
+// ---------------- 국회 자동 법안 ----------------
+function processAssembly(state: GameState, today: string): GameState {
+  let s = state;
+  const dayNum = state.clock.daysInOffice;
+
+  // 3-5일마다 새 법안 발의 (확률 기반)
+  if (dayNum > 0 && Math.random() < 0.3) {
+    const tpl = ALL_BILL_TEMPLATES[Math.floor(Math.random() * ALL_BILL_TEMPLATES.length)];
+    const bill: Bill = {
+      id: genId('bill'),
+      title: tpl.title,
+      summary: tpl.summary,
+      proposer: tpl.proposer,
+      category: tpl.category,
+      ideologyShift: tpl.ideologyShift,
+      expectedEffects: tpl.expectedEffects,
+      status: 'PENDING',
+      introducedAt: today,
+    };
+    s = {
+      ...s,
+      assembly: { ...s.assembly, pendingBills: [bill, ...s.assembly.pendingBills].slice(0, 30) },
+      events: [{
+        id: genId('evt'),
+        date: today,
+        category: 'POLITICS' as const,
+        severity: 'MINOR' as const,
+        headline: `[국회 발의] ${tpl.title}`,
+        body: `${tpl.proposer === 'RULING' ? '여당' : '야권'} 측이 ${tpl.title}을(를) 발의했다. ${tpl.summary}. 7일 내 본회의 표결 예정. 거부권 행사 가능.`,
+        source: '국회 의사국',
+        resolved: true,
+      } as GameEvent, ...s.events].slice(0, 200),
+    };
+  }
+
+  // 7일 이상 경과한 PENDING 법안 → 자동 표결
+  const pendingNow = s.assembly.pendingBills;
+  const stillPending: Bill[] = [];
+  const newlyPassed: Bill[] = [];
+  const newlyRejected: Bill[] = [];
+  const events: GameEvent[] = [];
+
+  for (const b of pendingNow) {
+    const introducedDate = new Date(b.introducedAt);
+    const daysSince = Math.floor((new Date(today).getTime() - introducedDate.getTime()) / 86400000);
+    if (daysSince < 7) {
+      stillPending.push(b);
+      continue;
+    }
+    // 표결: 발의 측이 여당이고 여당이 과반이면 거의 통과
+    // 발의 측이 야권이고 야권이 과반이면 통과 가능 (대통령 거부권 가능)
+    const ruling = s.assembly.rulingCoalitionSeats;
+    const isRulingProposed = b.proposer === 'RULING';
+    let passProb: number;
+    if (isRulingProposed) {
+      passProb = ruling >= 151 ? 0.92 : 0.4;
+    } else {
+      // 야권 발의
+      passProb = ruling < 151 ? 0.85 : 0.25;
+    }
+    if (Math.random() < passProb) {
+      // 통과 → 효과 적용
+      s = applyEffects(s, b.expectedEffects);
+      const passed: Bill = { ...b, status: 'PASSED' };
+      newlyPassed.push(passed);
+      events.push({
+        id: genId('evt'),
+        date: today,
+        category: 'POLITICS',
+        severity: 'MODERATE',
+        headline: `[국회 통과] ${b.title}`,
+        body: `본회의에서 ${b.title}이(가) 가결됐다. ${b.summary}. 정책 효과가 즉시 반영된다.`,
+        source: '국회 본회의',
+        resolved: true,
+      });
+    } else {
+      newlyRejected.push({ ...b, status: 'REJECTED' });
+      events.push({
+        id: genId('evt'),
+        date: today,
+        category: 'POLITICS',
+        severity: 'MINOR',
+        headline: `[국회 부결] ${b.title}`,
+        body: `${b.title}이(가) 본회의에서 부결됐다.`,
+        source: '국회 본회의',
+        resolved: true,
+      });
+    }
+  }
+
+  if (newlyPassed.length || newlyRejected.length) {
+    s = {
+      ...s,
+      assembly: {
+        ...s.assembly,
+        pendingBills: stillPending,
+        passedBills: [...newlyPassed, ...s.assembly.passedBills].slice(0, 50),
+      },
+      events: [...events, ...s.events].slice(0, 200),
+    };
+  } else if (stillPending.length !== pendingNow.length) {
+    s = { ...s, assembly: { ...s.assembly, pendingBills: stillPending } };
+  }
+
+  return s;
+}
+
+// ---------------- 자율 행정 액션 ----------------
+function processAutonomousActions(state: GameState, today: string): GameState {
+  // 매일 30% 확률로 1개의 자율 행정 액션 발생
+  if (Math.random() > 0.3) return state;
+  const act = AUTONOMOUS_ACTIONS[Math.floor(Math.random() * AUTONOMOUS_ACTIONS.length)];
+  let s = state;
+  if (act.effects) s = applyEffects(s, act.effects);
+  const evt: GameEvent = {
+    id: genId('evt'),
+    date: today,
+    category: act.category,
+    severity: 'INFO',
+    headline: `[자율 행정] ${act.headline}`,
+    body: `${act.detail} 대통령 결재 없이 부처/지자체 자체 권한으로 처리됨.`,
+    source: act.ministryHint ?? '관할 부처',
+    resolved: true,
+  };
+  return { ...s, events: [evt, ...s.events].slice(0, 200) };
 }

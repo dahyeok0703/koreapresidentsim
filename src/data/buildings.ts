@@ -129,7 +129,492 @@ const ROWS: Row[] = [
   ['UAE 바라카 원전',              '에너지','OVERSEAS','UAE',                    2021, '4기 운영중',      0,         '한국 수출 1호 원전', true],
 ];
 
-export const INITIAL_BUILDINGS: Building[] = ROWS.map(r => ({
+// =============================================================
+// 프로그래매틱 생성: 1000+개로 확장 (시드 기반 결정론적)
+// =============================================================
+type GenRow = [string, BuildingCategory, RegionId | 'OFFSHORE' | 'OVERSEAS', string, number?, string?, number?, string?, boolean?];
+
+const SUBDIV: Record<RegionId, string[]> = {
+  SEOUL: ['강남구','서초구','송파구','강동구','강서구','양천구','영등포구','구로구','금천구','동작구','관악구','서대문구','마포구','용산구','중구','종로구','성동구','광진구','동대문구','중랑구','성북구','강북구','도봉구','노원구','은평구'],
+  BUSAN: ['중구','서구','동구','영도구','부산진구','동래구','남구','북구','해운대구','사하구','금정구','강서구','연제구','수영구','사상구','기장군'],
+  DAEGU: ['중구','동구','서구','남구','북구','수성구','달서구','달성군','군위군'],
+  INCHEON: ['중구','동구','미추홀구','연수구','남동구','부평구','계양구','서구','강화군','옹진군'],
+  GWANGJU: ['동구','서구','남구','북구','광산구'],
+  DAEJEON: ['동구','중구','서구','유성구','대덕구'],
+  ULSAN: ['중구','남구','동구','북구','울주군'],
+  SEJONG: ['조치원읍','한솔동','도담동','새롬동','아름동','종촌동','고운동','대평동','보람동','소담동'],
+  GYEONGGI: ['수원시','성남시','용인시','고양시','화성시','평택시','안양시','부천시','안산시','시흥시','김포시','광명시','광주시','군포시','오산시','이천시','안성시','의왕시','하남시','구리시','남양주시','파주시','양주시','동두천시','포천시','연천군','가평군','양평군','여주시','과천시'],
+  GANGWON: ['춘천시','원주시','강릉시','동해시','태백시','속초시','삼척시','홍천군','횡성군','영월군','평창군','정선군','철원군','화천군','양구군','인제군','고성군','양양군'],
+  CHUNGBUK: ['청주시','충주시','제천시','보은군','옥천군','영동군','증평군','진천군','괴산군','음성군','단양군'],
+  CHUNGNAM: ['천안시','공주시','보령시','아산시','서산시','논산시','계룡시','당진시','금산군','부여군','서천군','청양군','홍성군','예산군','태안군'],
+  JEONBUK: ['전주시','군산시','익산시','정읍시','남원시','김제시','완주군','진안군','무주군','장수군','임실군','순창군','고창군','부안군'],
+  JEONNAM: ['목포시','여수시','순천시','나주시','광양시','담양군','곡성군','구례군','고흥군','보성군','화순군','장흥군','강진군','해남군','영암군','무안군','함평군','영광군','장성군','완도군','진도군','신안군'],
+  GYEONGBUK: ['포항시','경주시','김천시','안동시','구미시','영주시','영천시','상주시','문경시','경산시','의성군','청송군','영양군','영덕군','청도군','고령군','성주군','칠곡군','예천군','봉화군','울진군','울릉군'],
+  GYEONGNAM: ['창원시','진주시','통영시','사천시','김해시','밀양시','거제시','양산시','의령군','함안군','창녕군','고성군','남해군','하동군','산청군','함양군','거창군','합천군'],
+  JEJU: ['제주시','서귀포시'],
+};
+
+const REGION_PREFIX: Record<RegionId, string> = {
+  SEOUL: '서울', BUSAN: '부산', DAEGU: '대구', INCHEON: '인천', GWANGJU: '광주',
+  DAEJEON: '대전', ULSAN: '울산', SEJONG: '세종', GYEONGGI: '경기', GANGWON: '강원',
+  CHUNGBUK: '충북', CHUNGNAM: '충남', JEONBUK: '전북', JEONNAM: '전남',
+  GYEONGBUK: '경북', GYEONGNAM: '경남', JEJU: '제주',
+};
+
+const APT_BRANDS = ['래미안','자이','푸르지오','롯데캐슬','힐스테이트','e편한세상','아이파크','SK뷰','더샵','센트레빌','한라비발디','한신더휴','엘프라우드','아크로','디에이치','베르디움','꿈에그린','데시앙','효성해링턴','금호어울림'];
+const APT_SUFFIX = ['파크','리버뷰','오션뷰','포레','센트럴','에듀파크','하이클래스','시그니처','퍼스트','프레스티지','메가시티','센트라','애비뉴','스카이','퍼스티지','파티오','캐슬'];
+
+const TERMINAL_TYPES = ['고속버스터미널','시외버스터미널','종합터미널'];
+
+// 단순 결정론적 의사난수 (시드 → 0~mod-1)
+function det(seed: number, mod: number): number {
+  const x = Math.sin(seed * 9301.7 + 49297.1) * 233280;
+  return Math.floor(Math.abs(x - Math.floor(x)) * mod);
+}
+
+function genApartments(): GenRow[] {
+  const out: GenRow[] = [];
+  let s = 1000;
+  for (const region of Object.keys(SUBDIV) as RegionId[]) {
+    for (const sub of SUBDIV[region]) {
+      const count = region === 'SEOUL' ? 4 : region === 'GYEONGGI' ? 3 : 2;
+      for (let k = 0; k < count; k++) {
+        s++;
+        const brand = APT_BRANDS[det(s, APT_BRANDS.length)];
+        const sfx = APT_SUFFIX[det(s + 7, APT_SUFFIX.length)];
+        const year = 2000 + det(s + 11, 25);
+        const floors = 18 + det(s + 13, 28);
+        const dong = 4 + det(s + 17, 12);
+        const subShort = sub.replace(/(시|군|구|읍|동)$/, '');
+        out.push([
+          `${subShort} ${brand} ${sfx} ${k + 1}단지`,
+          '주거', region, `${REGION_PREFIX[region]} ${sub}`,
+          year, `${floors}층×${dong}동`,
+          (300 + det(s + 19, 1800)),
+          '대단지 아파트', false,
+        ]);
+      }
+    }
+  }
+  return out;
+}
+
+function genVillas(): GenRow[] {
+  const out: GenRow[] = [];
+  let s = 5000;
+  for (const region of Object.keys(SUBDIV) as RegionId[]) {
+    for (const sub of SUBDIV[region]) {
+      const subShort = sub.replace(/(시|군|구|읍|동)$/, '');
+      s++;
+      out.push([
+        `${subShort} 빌라타운`, '주거', region, `${REGION_PREFIX[region]} ${sub}`,
+        1995 + det(s, 28), '4~5층×다수동', 50 + det(s + 3, 200),
+        '소규모 빌라 밀집지', false,
+      ]);
+    }
+  }
+  return out;
+}
+
+function genDistrictOffices(): GenRow[] {
+  const out: GenRow[] = [];
+  for (const region of Object.keys(SUBDIV) as RegionId[]) {
+    for (const sub of SUBDIV[region]) {
+      out.push([
+        `${sub}청${sub.endsWith('구')||sub.endsWith('군')||sub.endsWith('시') ? '' : ' 청사'}`,
+        '문화', region, `${REGION_PREFIX[region]} ${sub}`,
+        undefined, '본관', undefined, '지방자치단체 청사', false,
+      ]);
+    }
+  }
+  return out;
+}
+
+function genPublicHealth(): GenRow[] {
+  const out: GenRow[] = [];
+  for (const region of Object.keys(SUBDIV) as RegionId[]) {
+    for (const sub of SUBDIV[region]) {
+      out.push([
+        `${sub} 보건소`, '의료', region, `${REGION_PREFIX[region]} ${sub}`,
+        undefined, '1차 의료기관', undefined, '공공보건', false,
+      ]);
+    }
+  }
+  return out;
+}
+
+// 실제 대학교 데이터
+const UNIVERSITIES: GenRow[] = [
+  ['고려대학교','교육','SEOUL','서울 성북구',1905,'본교',undefined,'사립 종합대',true],
+  ['연세대학교','교육','SEOUL','서울 서대문구',1885,'신촌캠퍼스',undefined,'사립 종합대',true],
+  ['서강대학교','교육','SEOUL','서울 마포구',1960,'본교',undefined,'사립 종합대',false],
+  ['성균관대학교','교육','SEOUL','서울 종로구',1398,'인문사회캠퍼스',undefined,'유서 깊은 사립대',true],
+  ['한양대학교','교육','SEOUL','서울 성동구',1939,'서울캠퍼스',undefined,'공학 강세',true],
+  ['중앙대학교','교육','SEOUL','서울 동작구',1918,'서울캠퍼스',undefined,'사립 종합대',false],
+  ['경희대학교','교육','SEOUL','서울 동대문구',1949,'서울캠퍼스',undefined,'한의대 유명',false],
+  ['한국외국어대학교','교육','SEOUL','서울 동대문구',1954,'서울캠퍼스',undefined,'외국어 특화',false],
+  ['이화여자대학교','교육','SEOUL','서울 서대문구',1886,'본교',undefined,'국내 최대 여대',true],
+  ['홍익대학교','교육','SEOUL','서울 마포구',1946,'서울캠퍼스',undefined,'미대 유명',false],
+  ['숙명여자대학교','교육','SEOUL','서울 용산구',1906,'본교',undefined,'사립 여대',false],
+  ['건국대학교','교육','SEOUL','서울 광진구',1946,'서울캠퍼스',undefined,'사립 종합대',false],
+  ['동국대학교','교육','SEOUL','서울 중구',1906,'서울캠퍼스',undefined,'불교 종립대',false],
+  ['국민대학교','교육','SEOUL','서울 성북구',1946,'본교',undefined,'사립 종합대',false],
+  ['세종대학교','교육','SEOUL','서울 광진구',1940,'본교',undefined,'사립 종합대',false],
+  ['숭실대학교','교육','SEOUL','서울 동작구',1897,'본교',undefined,'기독교 사립',false],
+  ['단국대학교','교육','GYEONGGI','경기 용인시',1947,'죽전캠퍼스',undefined,'사립 종합대',false],
+  ['한국항공대학교','교육','GYEONGGI','경기 고양시',1952,'본교',undefined,'항공 특화',false],
+  ['아주대학교','교육','GYEONGGI','경기 수원시',1973,'본교',undefined,'공학 강세',false],
+  ['경기대학교','교육','GYEONGGI','경기 수원시',1947,'본교',undefined,'사립 종합대',false],
+  ['가천대학교','교육','GYEONGGI','경기 성남시',1947,'본교',undefined,'사립 종합대',false],
+  ['인하대학교','교육','INCHEON','인천 미추홀구',1954,'본교',undefined,'공학 강세',false],
+  ['인천대학교','교육','INCHEON','인천 연수구',1979,'본교',undefined,'국립',false],
+  ['부산대학교','교육','BUSAN','부산 금정구',1946,'본교',undefined,'영남 거점 국립',true],
+  ['부경대학교','교육','BUSAN','부산 남구',1996,'본교',undefined,'수산·해양 특화',false],
+  ['동아대학교','교육','BUSAN','부산 서구',1946,'본교',undefined,'사립 종합대',false],
+  ['동의대학교','교육','BUSAN','부산 부산진구',1977,'본교',undefined,'사립 종합대',false],
+  ['경북대학교','교육','DAEGU','대구 북구',1946,'본교',undefined,'영남 거점 국립',true],
+  ['영남대학교','교육','GYEONGBUK','경북 경산시',1947,'본교',undefined,'사립 종합대',false],
+  ['계명대학교','교육','DAEGU','대구 달서구',1899,'본교',undefined,'사립 종합대',false],
+  ['대구가톨릭대학교','교육','GYEONGBUK','경북 경산시',1914,'본교',undefined,'사립 종합대',false],
+  ['DGIST','교육','DAEGU','대구 달성군',2004,'본원',undefined,'과학기술 특화',true],
+  ['UNIST','교육','ULSAN','울산 울주군',2009,'본원',undefined,'과학기술 특화',true],
+  ['전남대학교','교육','GWANGJU','광주 북구',1952,'본교',undefined,'호남 거점 국립',true],
+  ['조선대학교','교육','GWANGJU','광주 동구',1946,'본교',undefined,'사립 종합대',false],
+  ['전북대학교','교육','JEONBUK','전북 전주시',1947,'본교',undefined,'호남 국립',false],
+  ['원광대학교','교육','JEONBUK','전북 익산시',1946,'본교',undefined,'원불교 종립',false],
+  ['우석대학교','교육','JEONBUK','전북 완주군',1979,'본교',undefined,'사립 종합대',false],
+  ['군산대학교','교육','JEONBUK','전북 군산시',1947,'본교',undefined,'국립',false],
+  ['목포대학교','교육','JEONNAM','전남 무안군',1979,'본교',undefined,'국립',false],
+  ['순천대학교','교육','JEONNAM','전남 순천시',1935,'본교',undefined,'국립',false],
+  ['충남대학교','교육','DAEJEON','대전 유성구',1952,'본교',undefined,'충청 국립',true],
+  ['한밭대학교','교육','DAEJEON','대전 유성구',1927,'본교',undefined,'국립',false],
+  ['배재대학교','교육','DAEJEON','대전 서구',1885,'본교',undefined,'사립 종합대',false],
+  ['목원대학교','교육','DAEJEON','대전 서구',1954,'본교',undefined,'사립 종합대',false],
+  ['우송대학교','교육','DAEJEON','대전 동구',1995,'본교',undefined,'사립 종합대',false],
+  ['충북대학교','교육','CHUNGBUK','충북 청주시',1951,'본교',undefined,'국립',false],
+  ['청주대학교','교육','CHUNGBUK','충북 청주시',1947,'본교',undefined,'사립 종합대',false],
+  ['공주대학교','교육','CHUNGNAM','충남 공주시',1948,'본교',undefined,'국립',false],
+  ['순천향대학교','교육','CHUNGNAM','충남 아산시',1978,'본교',undefined,'의료 강세',false],
+  ['한국기술교육대학교','교육','CHUNGNAM','충남 천안시',1991,'본교',undefined,'고용노동부 산하',false],
+  ['단국대학교 천안캠퍼스','교육','CHUNGNAM','충남 천안시',1978,'천안캠퍼스',undefined,'사립',false],
+  ['선문대학교','교육','CHUNGNAM','충남 아산시',1972,'본교',undefined,'사립 종합대',false],
+  ['강원대학교','교육','GANGWON','강원 춘천시',1947,'본교',undefined,'강원 국립',false],
+  ['한림대학교','교육','GANGWON','강원 춘천시',1982,'본교',undefined,'의대 유명',false],
+  ['연세대학교 원주캠퍼스','교육','GANGWON','강원 원주시',1978,'미래캠퍼스',undefined,'분교',false],
+  ['강릉원주대학교','교육','GANGWON','강원 강릉시',1946,'본교',undefined,'국립',false],
+  ['경상국립대학교','교육','GYEONGNAM','경남 진주시',1948,'본교',undefined,'국립',false],
+  ['창원대학교','교육','GYEONGNAM','경남 창원시',1969,'본교',undefined,'국립',false],
+  ['인제대학교','교육','GYEONGNAM','경남 김해시',1932,'본교',undefined,'의대 보유',false],
+  ['제주대학교','교육','JEJU','제주 제주시',1952,'본교',undefined,'국립',false],
+  ['육군사관학교','교육','SEOUL','서울 노원구',1946,'본교',undefined,'육군 장교 양성',true],
+  ['해군사관학교','교육','GYEONGNAM','경남 창원시',1946,'본교',undefined,'해군 장교 양성',true],
+  ['공군사관학교','교육','CHUNGBUK','충북 청주시',1949,'본교',undefined,'공군 장교 양성',true],
+  ['국군간호사관학교','교육','DAEJEON','대전 유성구',1951,'본교',undefined,'군 간호장교 양성',false],
+  ['국방대학교','교육','CHUNGNAM','충남 논산시',1956,'본교',undefined,'간부 교육',false],
+  ['한국체육대학교','교육','SEOUL','서울 송파구',1976,'본교',undefined,'엘리트 체육',false],
+  ['서울대학교 시흥캠퍼스','교육','GYEONGGI','경기 시흥시',2018,'시흥캠퍼스',undefined,'미래모빌리티',false],
+  ['고려대학교 세종캠퍼스','교육','SEJONG','세종 조치원읍',1980,'세종캠퍼스',undefined,'분교',false],
+  ['홍익대학교 세종캠퍼스','교육','SEJONG','세종 조치원읍',1988,'세종캠퍼스',undefined,'분교',false],
+  ['카이스트 서울캠퍼스','교육','SEOUL','서울 동대문구',1971,'홍릉캠퍼스',undefined,'경영대 등',false],
+];
+
+// 종합병원 (대표)
+const HOSPITALS: GenRow[] = [
+  ['강남세브란스병원','의료','SEOUL','서울 강남구',1983,'750병상',undefined,'연세대학교의료원',false],
+  ['고려대학교 안암병원','의료','SEOUL','서울 성북구',1971,'1100병상',undefined,'BIG5 후보',true],
+  ['고려대학교 구로병원','의료','SEOUL','서울 구로구',1983,'1000병상',undefined,'-',false],
+  ['중앙대학교병원','의료','SEOUL','서울 동작구',1968,'880병상',undefined,'-',false],
+  ['이화여대 목동병원','의료','SEOUL','서울 양천구',1993,'900병상',undefined,'-',false],
+  ['이화여대 서울병원','의료','SEOUL','서울 강서구',2019,'900병상',undefined,'마곡 신축',false],
+  ['한양대학교병원','의료','SEOUL','서울 성동구',1972,'860병상',undefined,'-',false],
+  ['건국대학교병원','의료','SEOUL','서울 광진구',2005,'900병상',undefined,'-',false],
+  ['경희대학교병원','의료','SEOUL','서울 동대문구',1971,'1100병상',undefined,'한방+양방',false],
+  ['보라매병원','의료','SEOUL','서울 동작구',1955,'780병상',undefined,'서울시 운영',false],
+  ['서울의료원','의료','SEOUL','서울 중랑구',1977,'620병상',undefined,'서울시 운영',false],
+  ['국립중앙의료원','의료','SEOUL','서울 중구',1958,'500병상',undefined,'국가중앙',true],
+  ['서울아산병원','의료','SEOUL','서울 송파구',1989,'2705병상',undefined,'국내 최대 병원',true],
+  ['삼성서울병원','의료','SEOUL','서울 강남구',1994,'1979병상',undefined,'BIG5',true],
+  ['서울대학교병원','의료','SEOUL','서울 종로구',1885,'1786병상',undefined,'BIG5',true],
+  ['세브란스병원','의료','SEOUL','서울 서대문구',1885,'2419병상',undefined,'BIG5',true],
+  ['가톨릭대학교 서울성모병원','의료','SEOUL','서울 서초구',1936,'1356병상',undefined,'BIG5',true],
+  ['분당서울대학교병원','의료','GYEONGGI','경기 성남시',2003,'1335병상',undefined,'-',true],
+  ['분당차병원','의료','GYEONGGI','경기 성남시',1995,'810병상',undefined,'-',false],
+  ['아주대학교병원','의료','GYEONGGI','경기 수원시',1994,'1170병상',undefined,'권역응급의료센터',true],
+  ['한림대학교 성심병원','의료','GYEONGGI','경기 안양시',1971,'900병상',undefined,'-',false],
+  ['인하대학교병원','의료','INCHEON','인천 중구',1996,'900병상',undefined,'-',false],
+  ['가천대 길병원','의료','INCHEON','인천 남동구',1958,'1400병상',undefined,'-',false],
+  ['인천성모병원','의료','INCHEON','인천 부평구',1955,'780병상',undefined,'-',false],
+  ['부산대학교병원','의료','BUSAN','부산 서구',1956,'1170병상',undefined,'동남권 거점',true],
+  ['양산부산대학교병원','의료','GYEONGNAM','경남 양산시',2008,'1190병상',undefined,'-',false],
+  ['고신대학교 복음병원','의료','BUSAN','부산 서구',1951,'860병상',undefined,'-',false],
+  ['동아대학교병원','의료','BUSAN','부산 서구',1989,'1050병상',undefined,'-',false],
+  ['인제대학교 부산백병원','의료','BUSAN','부산 부산진구',1979,'900병상',undefined,'-',false],
+  ['해운대백병원','의료','BUSAN','부산 해운대구',2010,'1000병상',undefined,'-',false],
+  ['경북대학교병원','의료','DAEGU','대구 중구',1907,'1100병상',undefined,'영남 거점',true],
+  ['칠곡경북대학교병원','의료','DAEGU','대구 북구',2011,'700병상',undefined,'-',false],
+  ['영남대학교병원','의료','DAEGU','대구 남구',1981,'900병상',undefined,'-',false],
+  ['계명대학교 동산병원','의료','DAEGU','대구 달서구',1899,'1041병상',undefined,'-',false],
+  ['대구파티마병원','의료','DAEGU','대구 동구',1956,'600병상',undefined,'-',false],
+  ['전남대학교병원','의료','GWANGJU','광주 동구',1910,'1000병상',undefined,'호남 거점',true],
+  ['화순전남대학교병원','의료','JEONNAM','전남 화순군',2004,'700병상',undefined,'암 특화',false],
+  ['조선대학교병원','의료','GWANGJU','광주 동구',1971,'860병상',undefined,'-',false],
+  ['광주기독병원','의료','GWANGJU','광주 양림동',1905,'600병상',undefined,'-',false],
+  ['전북대학교병원','의료','JEONBUK','전북 전주시',1909,'1200병상',undefined,'-',true],
+  ['원광대학교병원','의료','JEONBUK','전북 익산시',1956,'1000병상',undefined,'-',false],
+  ['예수병원','의료','JEONBUK','전북 전주시',1898,'700병상',undefined,'-',false],
+  ['충남대학교병원','의료','DAEJEON','대전 중구',1972,'1300병상',undefined,'충청 거점',true],
+  ['건양대학교병원','의료','DAEJEON','대전 서구',2000,'900병상',undefined,'-',false],
+  ['을지대학교병원','의료','DAEJEON','대전 서구',1956,'870병상',undefined,'-',false],
+  ['충북대학교병원','의료','CHUNGBUK','충북 청주시',1985,'750병상',undefined,'-',false],
+  ['단국대학교병원','의료','CHUNGNAM','충남 천안시',1994,'870병상',undefined,'-',false],
+  ['순천향대학교 천안병원','의료','CHUNGNAM','충남 천안시',1982,'900병상',undefined,'-',false],
+  ['강원대학교병원','의료','GANGWON','강원 춘천시',1990,'600병상',undefined,'-',false],
+  ['한림대학교 춘천성심병원','의료','GANGWON','강원 춘천시',1984,'600병상',undefined,'-',false],
+  ['연세대학교 원주세브란스기독병원','의료','GANGWON','강원 원주시',1959,'870병상',undefined,'-',false],
+  ['강릉아산병원','의료','GANGWON','강원 강릉시',1996,'800병상',undefined,'-',false],
+  ['경상국립대학교병원','의료','GYEONGNAM','경남 진주시',1909,'900병상',undefined,'-',false],
+  ['창원경상국립대학교병원','의료','GYEONGNAM','경남 창원시',2016,'600병상',undefined,'-',false],
+  ['제주대학교병원','의료','JEJU','제주 제주시',1971,'650병상',undefined,'-',false],
+  ['제주한라병원','의료','JEJU','제주 제주시',1983,'690병상',undefined,'-',false],
+  ['국군수도병원','의료','GYEONGGI','경기 성남시',1953,'1100병상',undefined,'국군 의료 거점',true],
+  ['국군대전병원','의료','DAEJEON','대전 유성구',1957,'400병상',undefined,'-',false],
+  ['국군홍천병원','의료','GANGWON','강원 홍천군',1956,'200병상',undefined,'-',false],
+];
+
+// KTX/SRT 주요 역
+const STATIONS: GenRow[] = [
+  ['서울역','교통','SEOUL','서울 용산구',1900,'경부·경의선',undefined,'KTX 시발역',true],
+  ['용산역','교통','SEOUL','서울 용산구',1899,'호남·전라선',undefined,'KTX 호남선',true],
+  ['수서역','교통','SEOUL','서울 강남구',2016,'수서평택고속선',undefined,'SRT 시발역',true],
+  ['청량리역','교통','SEOUL','서울 동대문구',1911,'중앙·경춘선',undefined,'KTX 강릉선',false],
+  ['광명역','교통','GYEONGGI','경기 광명시',2004,'경부고속선',undefined,'KTX',false],
+  ['천안아산역','교통','CHUNGNAM','충남 아산시',2004,'경부고속선',undefined,'KTX',false],
+  ['대전역','교통','DAEJEON','대전 동구',1905,'경부선',undefined,'KTX',true],
+  ['오송역','교통','CHUNGBUK','충북 청주시',2010,'경부+호남고속선 분기',undefined,'KTX 분기점',true],
+  ['김천구미역','교통','GYEONGBUK','경북 김천시',2010,'경부고속선',undefined,'KTX',false],
+  ['동대구역','교통','DAEGU','대구 동구',1969,'경부고속선',undefined,'KTX',true],
+  ['신경주역','교통','GYEONGBUK','경북 경주시',2010,'경부고속선',undefined,'KTX',false],
+  ['울산역','교통','ULSAN','울산 울주군',2010,'경부고속선',undefined,'KTX',false],
+  ['부산역','교통','BUSAN','부산 동구',1908,'경부선',undefined,'KTX 종착역',true],
+  ['익산역','교통','JEONBUK','전북 익산시',1912,'호남선',undefined,'KTX',false],
+  ['광주송정역','교통','GWANGJU','광주 광산구',1913,'호남고속선',undefined,'KTX',true],
+  ['목포역','교통','JEONNAM','전남 목포시',1913,'호남선',undefined,'KTX 종착',false],
+  ['여수엑스포역','교통','JEONNAM','전남 여수시',1930,'전라선',undefined,'KTX',false],
+  ['강릉역','교통','GANGWON','강원 강릉시',1962,'강릉선',undefined,'KTX',false],
+  ['평창역','교통','GANGWON','강원 평창군',2017,'강릉선',undefined,'평창올림픽 대비',false],
+  ['진부역','교통','GANGWON','강원 평창군',2017,'강릉선',undefined,'-',false],
+  ['행신역','교통','GYEONGGI','경기 고양시',1999,'경의선',undefined,'KTX 차량기지',false],
+  ['공주역','교통','CHUNGNAM','충남 공주시',2015,'호남고속선',undefined,'KTX',false],
+];
+
+// 버스 터미널
+function genTerminals(): GenRow[] {
+  const out: GenRow[] = [];
+  const HUBS: [RegionId, string, string][] = [
+    ['SEOUL','서울고속버스터미널','서울 서초구'],
+    ['SEOUL','센트럴시티 호남선','서울 서초구'],
+    ['SEOUL','동서울종합터미널','서울 광진구'],
+    ['SEOUL','남부터미널','서울 서초구'],
+    ['SEOUL','상봉터미널','서울 중랑구'],
+    ['BUSAN','부산종합버스터미널','부산 금정구'],
+    ['BUSAN','부산서부시외버스터미널','부산 사상구'],
+    ['DAEGU','대구북부정류장','대구 북구'],
+    ['DAEGU','대구서부정류장','대구 남구'],
+    ['DAEGU','동대구복합환승센터','대구 동구'],
+    ['INCHEON','인천종합터미널','인천 미추홀구'],
+    ['GWANGJU','광주종합버스터미널(유스퀘어)','광주 서구'],
+    ['DAEJEON','대전복합터미널','대전 동구'],
+    ['DAEJEON','서대전시외버스터미널','대전 중구'],
+    ['ULSAN','울산고속버스터미널','울산 남구'],
+    ['GYEONGGI','수원종합버스터미널','경기 수원시'],
+    ['GYEONGGI','성남종합버스터미널','경기 성남시'],
+    ['GYEONGGI','고양종합터미널','경기 고양시'],
+    ['GYEONGGI','안산종합터미널','경기 안산시'],
+    ['GANGWON','춘천시외버스터미널','강원 춘천시'],
+    ['GANGWON','강릉고속버스터미널','강원 강릉시'],
+    ['GANGWON','속초고속버스터미널','강원 속초시'],
+    ['CHUNGBUK','청주고속버스터미널','충북 청주시'],
+    ['CHUNGNAM','천안종합터미널','충남 천안시'],
+    ['JEONBUK','전주고속버스터미널','전북 전주시'],
+    ['JEONBUK','군산고속버스터미널','전북 군산시'],
+    ['JEONNAM','순천종합버스터미널','전남 순천시'],
+    ['JEONNAM','여수종합버스터미널','전남 여수시'],
+    ['GYEONGBUK','포항시외버스터미널','경북 포항시'],
+    ['GYEONGBUK','경주고속버스터미널','경북 경주시'],
+    ['GYEONGBUK','구미고속버스터미널','경북 구미시'],
+    ['GYEONGNAM','창원종합버스터미널','경남 창원시'],
+    ['GYEONGNAM','김해여객터미널','경남 김해시'],
+    ['GYEONGNAM','진주시외버스터미널','경남 진주시'],
+    ['JEJU','제주국제컨벤션센터','제주 서귀포시'],
+  ];
+  for (const [region, name, loc] of HUBS) {
+    out.push([name, '교통', region, loc, undefined, '복합터미널', undefined, '여객터미널', false]);
+  }
+  return out;
+}
+
+// 산업단지·중소공단
+function genIndustrialParks(): GenRow[] {
+  const out: GenRow[] = [];
+  const IPS: [RegionId, string, string, string?][] = [
+    ['SEOUL','구로디지털산업단지','서울 구로구','IT·서비스'],
+    ['SEOUL','금천 G밸리','서울 금천구','IT 클러스터'],
+    ['INCHEON','남동국가산업단지','인천 남동구','중소기계·금속'],
+    ['INCHEON','부평국가산업단지','인천 부평구','-'],
+    ['INCHEON','송도지식정보산업단지','인천 연수구','바이오'],
+    ['GYEONGGI','반월국가산업단지','경기 안산시','중소기계'],
+    ['GYEONGGI','시화국가산업단지','경기 시흥시','중소기계'],
+    ['GYEONGGI','파주출판도시','경기 파주시','출판·미디어'],
+    ['GYEONGGI','김포양촌산업단지','경기 김포시','-'],
+    ['GYEONGGI','동탄테크노밸리','경기 화성시','반도체 R&D'],
+    ['GYEONGGI','판교 테크노밸리','경기 성남시','IT·게임·핀테크'],
+    ['CHUNGNAM','아산국가산업단지','충남 아산시','반도체·디스플레이'],
+    ['CHUNGNAM','당진합덕산업단지','충남 당진시','철강'],
+    ['CHUNGNAM','대산석유화학단지','충남 서산시','석유화학'],
+    ['CHUNGBUK','오송생명과학단지','충북 청주시','바이오'],
+    ['CHUNGBUK','오창과학산업단지','충북 청주시','전자·이차전지'],
+    ['JEONBUK','군산국가산업단지','전북 군산시','자동차·조선(공장 이전 후 재편)'],
+    ['JEONBUK','새만금산업단지','전북 군산시','신산업'],
+    ['JEONNAM','여수국가산업단지','전남 여수시','석유화학'],
+    ['JEONNAM','광양국가산업단지','전남 광양시','철강·항만'],
+    ['JEONNAM','대불국가산업단지','전남 영암군','조선기자재'],
+    ['GYEONGBUK','구미국가산업단지','경북 구미시','전자·전기'],
+    ['GYEONGBUK','포항블루밸리','경북 포항시','신소재'],
+    ['GYEONGBUK','경주외동산업단지','경북 경주시','자동차부품'],
+    ['GYEONGNAM','창원국가산업단지','경남 창원시','기계·방산'],
+    ['GYEONGNAM','거제대우조선해양','경남 거제시','조선'],
+    ['GYEONGNAM','사천항공국가산업단지','경남 사천시','항공우주'],
+    ['DAEJEON','대덕연구개발특구','대전 유성구','R&D'],
+    ['DAEJEON','대전산업단지','대전 대덕구','-'],
+    ['GANGWON','원주의료기기클러스터','강원 원주시','의료기기'],
+    ['ULSAN','석유화학공업단지','울산 남구','석유화학'],
+    ['ULSAN','미포국가산업단지','울산 동구','자동차·조선'],
+    ['BUSAN','녹산국가산업단지','부산 강서구','기계·운송'],
+    ['DAEGU','성서산업단지','대구 달서구','자동차부품'],
+    ['DAEGU','대구첨단의료복합단지','대구 동구','의료'],
+    ['GWANGJU','광주첨단과학산업단지','광주 광산구','광산업'],
+    ['GWANGJU','하남산업단지','광주 광산구','자동차부품'],
+    ['SEJONG','명학산업단지','세종 조치원읍','-'],
+    ['JEJU','첨단과학기술단지','제주 제주시','IT·신재생'],
+  ];
+  for (const [r, n, l, d] of IPS) out.push([n, '공업', r, l, undefined, '산업단지', undefined, d, false]);
+  return out;
+}
+
+// 댐·저수지·하천 시설
+const DAMS: GenRow[] = [
+  ['팔당댐','수자원','GYEONGGI','경기 남양주시',1973,'다목적댐',undefined,'수도권 식수원',true],
+  ['청평댐','수자원','GYEONGGI','경기 가평군',1944,'수력댐',undefined,'-',false],
+  ['의암댐','수자원','GANGWON','강원 춘천시',1967,'수력',undefined,'-',false],
+  ['춘천댐','수자원','GANGWON','강원 춘천시',1965,'수력',undefined,'-',false],
+  ['화천댐','수자원','GANGWON','강원 화천군',1944,'수력',undefined,'-',false],
+  ['평화의댐','수자원','GANGWON','강원 화천군',1989,'홍수조절',undefined,'대북 방어 목적',true],
+  ['안동댐','수자원','GYEONGBUK','경북 안동시',1976,'다목적',undefined,'-',false],
+  ['임하댐','수자원','GYEONGBUK','경북 안동시',1992,'다목적',undefined,'-',false],
+  ['합천댐','수자원','GYEONGNAM','경남 합천군',1989,'다목적',undefined,'-',false],
+  ['남강댐','수자원','GYEONGNAM','경남 진주시',1969,'다목적',undefined,'-',false],
+  ['주암댐','수자원','JEONNAM','전남 순천시',1991,'다목적',undefined,'-',false],
+  ['섬진강댐','수자원','JEONBUK','전북 임실군',1965,'다목적',undefined,'-',false],
+  ['용담댐','수자원','JEONBUK','전북 진안군',2001,'다목적',undefined,'-',false],
+  ['보령댐','수자원','CHUNGNAM','충남 보령시',1996,'다목적',undefined,'-',false],
+  ['대청댐','수자원','CHUNGBUK','충북 청주시',1980,'다목적',undefined,'중부권 식수',true],
+  ['괴산댐','수자원','CHUNGBUK','충북 괴산군',1957,'수력',undefined,'-',false],
+];
+
+// 박물관·미술관·공연장
+const CULTURE: GenRow[] = [
+  ['국립현대미술관 서울관','문화','SEOUL','서울 종로구',2013,'본관',undefined,'-',true],
+  ['국립현대미술관 과천관','문화','GYEONGGI','경기 과천시',1986,'본관',undefined,'-',false],
+  ['국립현대미술관 청주관','문화','CHUNGBUK','충북 청주시',2018,'본관',undefined,'-',false],
+  ['리움미술관','문화','SEOUL','서울 용산구',2004,'본관',undefined,'삼성문화재단',true],
+  ['서울시립미술관','문화','SEOUL','서울 중구',1988,'본관',undefined,'-',false],
+  ['DDP 동대문디자인플라자','문화','SEOUL','서울 중구',2014,'복합문화공간',undefined,'-',true],
+  ['세종문화회관','문화','SEOUL','서울 종로구',1978,'대극장',undefined,'-',true],
+  ['예술의전당','문화','SEOUL','서울 서초구',1988,'오페라하우스',undefined,'-',true],
+  ['국립국악원','문화','SEOUL','서울 서초구',1988,'본원',undefined,'-',false],
+  ['국립한글박물관','문화','SEOUL','서울 용산구',2014,'본관',undefined,'-',false],
+  ['전쟁기념관','문화','SEOUL','서울 용산구',1994,'본관',undefined,'-',true],
+  ['대한민국역사박물관','문화','SEOUL','서울 종로구',2012,'본관',undefined,'-',false],
+  ['서대문형무소역사관','문화','SEOUL','서울 서대문구',1908,'본관',undefined,'-',false],
+  ['국립아시아문화전당','문화','GWANGJU','광주 동구',2015,'복합문화시설',undefined,'5·18 기념',true],
+  ['부산시립미술관','문화','BUSAN','부산 해운대구',1998,'본관',undefined,'-',false],
+  ['부산영화의전당','문화','BUSAN','부산 해운대구',2011,'본관',undefined,'BIFF 본부',true],
+  ['DGB대구은행파크','문화','DAEGU','대구 북구',2019,'축구전용',undefined,'대구FC 홈',false],
+  ['엑스코(EXCO)','문화','DAEGU','대구 북구',2001,'전시컨벤션',undefined,'-',false],
+  ['벡스코(BEXCO)','문화','BUSAN','부산 해운대구',2001,'전시컨벤션',undefined,'-',false],
+  ['킨텍스(KINTEX)','문화','GYEONGGI','경기 고양시',2005,'전시컨벤션',undefined,'국내 최대',true],
+  ['코엑스(COEX)','문화','SEOUL','서울 강남구',1979,'전시컨벤션',undefined,'-',true],
+  ['수원컨벤션센터','문화','GYEONGGI','경기 수원시',2019,'전시',undefined,'-',false],
+  ['ICC 제주','문화','JEJU','제주 서귀포시',2003,'국제컨벤션',undefined,'-',false],
+  ['대전엑스포과학공원','문화','DAEJEON','대전 유성구',1993,'복합공원',undefined,'1993 엑스포 부지',false],
+];
+
+// 경기장
+const SPORTS: GenRow[] = [
+  ['상암 서울월드컵경기장','문화','SEOUL','서울 마포구',2001,'66704석',undefined,'FC서울 홈',true],
+  ['잠실종합운동장 주경기장','문화','SEOUL','서울 송파구',1984,'69950석',undefined,'1988 올림픽',true],
+  ['잠실야구장','문화','SEOUL','서울 송파구',1982,'25000석',undefined,'두산·LG 홈',true],
+  ['고척스카이돔','문화','SEOUL','서울 구로구',2015,'국내 첫 돔구장',undefined,'키움 히어로즈',true],
+  ['수원월드컵경기장','문화','GYEONGGI','경기 수원시',2001,'43959석',undefined,'수원삼성 홈',false],
+  ['수원KT위즈파크','문화','GYEONGGI','경기 수원시',1990,'야구장',undefined,'KT 홈',false],
+  ['인천문학경기장','문화','INCHEON','인천 미추홀구',2002,'50256석',undefined,'-',false],
+  ['SSG랜더스필드','문화','INCHEON','인천 미추홀구',2002,'야구장',undefined,'SSG 홈',false],
+  ['부산아시아드주경기장','문화','BUSAN','부산 연제구',2001,'53864석',undefined,'-',false],
+  ['사직야구장','문화','BUSAN','부산 동래구',1985,'야구장',undefined,'롯데 자이언츠 홈',true],
+  ['대구FC파크','문화','DAEGU','대구 북구',2019,'축구전용',undefined,'대구FC 홈',false],
+  ['삼성라이온즈파크','문화','DAEGU','대구 수성구',2016,'야구장',undefined,'삼성 홈',false],
+  ['광주월드컵경기장','문화','GWANGJU','광주 서구',2001,'40245석',undefined,'-',false],
+  ['광주기아챔피언스필드','문화','GWANGJU','광주 북구',2014,'야구장',undefined,'KIA 홈',false],
+  ['대전한밭종합운동장','문화','DAEJEON','대전 중구',1964,'-',undefined,'-',false],
+  ['이글스파크 / 한화생명이글스파크','문화','DAEJEON','대전 중구',1964,'야구장',undefined,'한화 홈',false],
+  ['창원NC파크','문화','GYEONGNAM','경남 창원시',2019,'야구장',undefined,'NC 홈',false],
+  ['울산문수축구경기장','문화','ULSAN','울산 남구',2001,'-',undefined,'울산현대 홈',false],
+  ['포항스틸야드','문화','GYEONGBUK','경북 포항시',1990,'-',undefined,'포항스틸러스 홈',false],
+  ['평창동계올림픽 슬라이딩센터','문화','GANGWON','강원 평창군',2017,'-',undefined,'2018 올림픽',false],
+];
+
+// 백화점·쇼핑몰 (대표)
+const MALLS: GenRow[] = [
+  ['롯데백화점 본점','상업','SEOUL','서울 중구',1979,'본관·에비뉴엘',undefined,'국내 1호',true],
+  ['신세계백화점 본점','상업','SEOUL','서울 중구',1930,'본관',undefined,'미쓰코시→신세계',true],
+  ['갤러리아 명품관','상업','SEOUL','서울 강남구',1990,'East·West',undefined,'-',false],
+  ['현대백화점 무역센터점','상업','SEOUL','서울 강남구',1988,'COEX 인접',undefined,'-',false],
+  ['더현대 서울','상업','SEOUL','서울 영등포구',2021,'여의도',undefined,'국내 최대 백화점',true],
+  ['스타필드 코엑스몰','상업','SEOUL','서울 강남구',2000,'복합쇼핑몰',undefined,'-',false],
+  ['타임스퀘어','상업','SEOUL','서울 영등포구',2009,'복합쇼핑몰',undefined,'-',false],
+  ['IFC몰','상업','SEOUL','서울 영등포구',2012,'-',undefined,'-',false],
+  ['IPark몰 용산','상업','SEOUL','서울 용산구',2004,'-',undefined,'-',false],
+  ['롯데월드몰','상업','SEOUL','서울 송파구',2014,'-',undefined,'-',true],
+  ['스타필드 하남','상업','GYEONGGI','경기 하남시',2016,'-',undefined,'-',true],
+  ['스타필드 고양','상업','GYEONGGI','경기 고양시',2017,'-',undefined,'-',false],
+  ['스타필드 안성','상업','GYEONGGI','경기 안성시',2024,'-',undefined,'최신',false],
+  ['스타필드 수원','상업','GYEONGGI','경기 수원시',2024,'-',undefined,'-',false],
+  ['신세계 강남점','상업','SEOUL','서울 서초구',2000,'센트럴시티',undefined,'국내 매출 1위',true],
+  ['갤러리아 광교','상업','GYEONGGI','경기 수원시',2020,'-',undefined,'-',false],
+  ['롯데몰 김포공항','상업','SEOUL','서울 강서구',2011,'-',undefined,'-',false],
+  ['신세계 센텀시티','상업','BUSAN','부산 해운대구',2009,'세계 최대 백화점(기네스)',undefined,'-',true],
+  ['신세계 광주신세계','상업','GWANGJU','광주 서구',1995,'-',undefined,'-',false],
+  ['NC백화점 대전점','상업','DAEJEON','대전 동구',2007,'-',undefined,'-',false],
+];
+
+// 종합 합치기
+const _GEN = [
+  ...genApartments(),
+  ...genVillas(),
+  ...genDistrictOffices(),
+  ...genPublicHealth(),
+  ...UNIVERSITIES,
+  ...HOSPITALS,
+  ...STATIONS,
+  ...genTerminals(),
+  ...genIndustrialParks(),
+  ...DAMS,
+  ...CULTURE,
+  ...SPORTS,
+  ...MALLS,
+];
+
+export const INITIAL_BUILDINGS: Building[] = [...ROWS, ..._GEN].map(r => ({
   id: genId('bld'),
   name: r[0],
   category: r[1],

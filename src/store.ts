@@ -64,6 +64,10 @@ interface UIState {
   // 행정 업무
   addAdminTask: (t: Omit<AdminTask, 'id' | 'startedAt' | 'status'>) => void;
   completeAdminTask: (id: string) => void;
+
+  // 국회 법안
+  vetoBill: (billId: string) => void;
+  letBillProceed: (billId: string) => void;
 }
 
 export const useGame = create<UIState>((set, get) => ({
@@ -77,7 +81,7 @@ export const useGame = create<UIState>((set, get) => ({
 
   hydrate() {
     const s = loadCurrent();
-    if (s && (s.version ?? 0) >= 4) set({ state: s });
+    if (s && (s.version ?? 0) >= 5) set({ state: s });
     else if (s) { localStorage.removeItem('kps-current'); }
   },
 
@@ -397,5 +401,70 @@ export const useGame = create<UIState>((set, get) => ({
       ...s,
       adminTasks: s.adminTasks.map(t => t.id === id ? { ...t, progress: 100, status: 'DONE' as const } : t),
     }));
+  },
+
+  // ---------- 국회 법안 ----------
+  vetoBill(billId) {
+    get().patch(s => {
+      const b = s.assembly.pendingBills.find(x => x.id === billId);
+      if (!b) return s;
+      const vetoed = { ...b, status: 'VETOED' as const };
+      // 거부권 행사 → 야권 분노, 여당 지지층 안도
+      const oppositionRising = s.assembly.rulingCoalitionSeats < 151;
+      const eff: PartialEffects = {
+        approval: oppositionRising ? -1.5 : 0.5,
+        approvalByIdeology: b.ideologyShift < 0
+          ? { progressive: -3, conservative: 2 }
+          : { progressive: 2, conservative: -3 },
+      };
+      const next = applyEffects(s, eff);
+      return {
+        ...next,
+        assembly: {
+          ...next.assembly,
+          pendingBills: next.assembly.pendingBills.filter(x => x.id !== billId),
+          vetoedBills: [vetoed, ...next.assembly.vetoedBills].slice(0, 30),
+        },
+        events: [{
+          id: genId('evt'),
+          date: s.clock.currentDate,
+          category: 'POLITICS' as const,
+          severity: 'MAJOR' as const,
+          headline: `[거부권] ${b.title}`,
+          body: `대통령이 ${b.title}에 대해 거부권을 행사했다. 야권의 강한 반발이 예상된다.`,
+          source: '청와대',
+          resolved: true,
+        } as GameEvent, ...next.events].slice(0, 200),
+      };
+    });
+  },
+
+  letBillProceed(billId) {
+    // 명시적 "통과 동의" — 즉시 효과 적용 + 통과 처리 (대기 없이)
+    get().patch(s => {
+      const b = s.assembly.pendingBills.find(x => x.id === billId);
+      if (!b) return s;
+      let next = applyEffects(s, b.expectedEffects);
+      const passed = { ...b, status: 'PASSED' as const };
+      next = {
+        ...next,
+        assembly: {
+          ...next.assembly,
+          pendingBills: next.assembly.pendingBills.filter(x => x.id !== billId),
+          passedBills: [passed, ...next.assembly.passedBills].slice(0, 50),
+        },
+        events: [{
+          id: genId('evt'),
+          date: s.clock.currentDate,
+          category: 'POLITICS' as const,
+          severity: 'MODERATE' as const,
+          headline: `[법안 통과] ${b.title}`,
+          body: `${b.title}이(가) 본회의를 통과했다. 정책 효과가 즉시 반영된다.`,
+          source: '국회 본회의',
+          resolved: true,
+        } as GameEvent, ...next.events].slice(0, 200),
+      };
+      return next;
+    });
   },
 }));

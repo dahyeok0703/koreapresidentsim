@@ -818,7 +818,14 @@ function AdminTab() {
 // ============ 국회 ============
 function AssemblyTab() {
   const a = useGame(s => s.state!.assembly);
+  const today = useGame(s => s.state!.clock.currentDate);
   const parties = useGame(s => s.state!.parties);
+  const vetoBill = useGame(s => s.vetoBill);
+  const letBillProceed = useGame(s => s.letBillProceed);
+  const daysUntilVote = (introduced: string) => {
+    const diff = Math.floor((new Date(today).getTime() - new Date(introduced).getTime()) / 86400000);
+    return Math.max(0, 7 - diff);
+  };
   return (
     <>
       <Panel title="국회 (제22대 · 300석)" right={<span className="text-[10px] text-slate-500">의장 {a.speaker.name}</span>}>
@@ -834,6 +841,57 @@ function AssemblyTab() {
         <Stat label="여당 의석"       value={`${a.rulingCoalitionSeats}/300`} />
         <Stat label="탄핵소추 누계"   value={`${a.impeachmentMotions}건`} />
         <Stat label="필리버스터 일수" value={`${a.filibusterDays}일`} />
+      </Panel>
+
+      <Panel title={`계류 법안 (${a.pendingBills.length})`} right={<span className="text-[10px] text-slate-500">7일 후 자동 표결</span>}>
+        {a.pendingBills.length === 0 && <div className="text-[11px] text-slate-500 text-center py-2">현재 계류 중인 법안이 없습니다.</div>}
+        <div className="space-y-1.5">
+          {a.pendingBills.map(b => {
+            const left = daysUntilVote(b.introducedAt);
+            return (
+              <div key={b.id} className="bg-slate-950/40 border border-slate-800 rounded p-2">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1 text-[10px]">
+                    <Chip color={b.proposer === 'RULING' ? 'text-blue-300 border-blue-800 bg-blue-900/30' : 'text-red-300 border-red-800 bg-red-900/30'}>
+                      {b.proposer === 'RULING' ? '여당 발의' : '야권 발의'}
+                    </Chip>
+                    <Chip color={b.ideologyShift < -20 ? 'text-blue-300 border-blue-800' : b.ideologyShift > 20 ? 'text-red-300 border-red-800' : 'text-slate-300'}>
+                      {b.ideologyShift < -20 ? '진보' : b.ideologyShift > 20 ? '보수' : '중도'}
+                    </Chip>
+                    <span className="text-slate-500">발의 {b.introducedAt}</span>
+                  </div>
+                  <span className={`text-[10px] ${left <= 2 ? 'text-red-300' : 'text-slate-400'}`}>표결까지 {left}일</span>
+                </div>
+                <div className="text-xs font-semibold text-slate-100">{b.title}</div>
+                <div className="text-[11px] text-slate-300 mt-0.5">{b.summary}</div>
+                <div className="flex gap-1 mt-2">
+                  <button onClick={() => letBillProceed(b.id)} className="btn-primary text-[10px] py-1 px-2">동의 (즉시 통과)</button>
+                  <button onClick={() => vetoBill(b.id)} className="btn-danger text-[10px] py-1 px-2">거부권 행사</button>
+                  <span className="text-[10px] text-slate-500 self-center ml-1">(가만히 두면 자동 표결)</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Panel>
+
+      <Panel title={`최근 통과 (${a.passedBills.length}) · 거부 (${a.vetoedBills.length}) · 부결 (${0})`}>
+        <details className="text-xs">
+          <summary className="cursor-pointer text-[11px] text-slate-400">통과 법안 ▾</summary>
+          <ul className="mt-1 space-y-0.5">
+            {a.passedBills.slice(0, 10).map(b => (
+              <li key={b.id} className="text-[11px] text-emerald-300">✓ {b.title}</li>
+            ))}
+          </ul>
+        </details>
+        <details className="text-xs mt-1">
+          <summary className="cursor-pointer text-[11px] text-slate-400">거부권 행사 ▾</summary>
+          <ul className="mt-1 space-y-0.5">
+            {a.vetoedBills.slice(0, 10).map(b => (
+              <li key={b.id} className="text-[11px] text-orange-300">✗ {b.title}</li>
+            ))}
+          </ul>
+        </details>
       </Panel>
       <Panel title={`상임위원회 (${a.committees.length}개)`}>
         <div className="space-y-1 text-xs">
