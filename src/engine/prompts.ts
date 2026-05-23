@@ -10,13 +10,13 @@ export function summarizeState(s: GameState): string {
   const party = s.parties.find(x => x.id === p.party)?.name ?? p.party;
   const ruling = s.assembly.rulingCoalitionSeats;
   const opp = s.assembly.oppositionSeats;
-  const foreign = s.foreign.slice(0, 12).map(f => `${f.name}(관계${f.relation}/신뢰${f.trustLevel})`).join(', ');
+  const foreign = s.countries.filter(c => ['US','CN','JP','NK','RU','EU','UK','DE','FR','IN','VN','AU','TW'].includes(c.id)).map(f => `${f.name}(관계${f.relation}/신뢰${f.trustLevel})`).join(', ');
   const recentEvents = s.events.slice(0, 5).map(ev => `- [${ev.date}/${ev.severity}] ${ev.headline}`).join('\n');
   const conflicts = intl.ongoingConflicts.slice(0, 4).map(c => `${c.name}(${c.status},강도${c.intensity})`).join(', ');
 
   return [
     `## 대통령`,
-    `- ${p.name} (${party}, ${p.age}세, ${p.gender === 'M' ? '남' : '여'}, 이념${p.ideology}, ${p.religion})`,
+    `- ${p.name} (${party}, ${p.gender === 'M' ? '남' : '여'}, 생년 ${p.birthDate}, 이념${p.ideology}, ${p.religion})`,
     `- 슬로건: "${p.slogan}"`,
     `- 출생지: ${p.birthplace}, MBTI: ${p.mbti ?? '-'}`,
     `- 학력: ${p.education.map(ed => `${ed.school}(${ed.level})`).join(', ')}`,
@@ -31,7 +31,7 @@ export function summarizeState(s: GameState): string {
     `## 경제`,
     `- GDP성장 ${e.gdpGrowth}%, 물가 ${e.inflation}%(근원 ${e.coreInflation}%), 실업 ${e.unemployment}%(청년 ${e.youthUnemployment}%)`,
     `- 기준금리 ${e.baseRate}%, 환율 ${e.fxUsdKrw}원/$, 코스피 ${e.kospi}, 코스닥 ${e.kosdaq}`,
-    `- 수출 YoY ${e.exportYoY}%, 무역수지 ${e.tradeBalance}억$, 경상수지 ${e.currentAccount}억$, 외환보유고 ${e.fxReserves}억$`,
+    `- 수출 YoY ${e.exportYoY}%, 월 무역수지 $${e.monthlyTradeBalanceUSD}B, YTD $${e.ytdTradeBalanceUSD}B, 경상수지 $${e.currentAccountUSD}B, 외환보유고 $${e.fxReservesUSD}B, 국고 ₩${e.treasuryBalanceKRW}조`,
     `- 국가부채/GDP ${e.nationalDebt}%, 가계부채/GDP ${e.householdDebt}%, 주택가격YoY ${e.housePriceYoY}%`,
     `- 소비심리 ${e.consumerConfidence}, 기업심리 ${e.businessConfidence}`,
     ``,
@@ -57,7 +57,7 @@ export function summarizeState(s: GameState): string {
     `- ${foreign}`,
     ``,
     `## 국제정세`,
-    `- 미국 대통령: ${s.foreign.find(f=>f.id==='US')?.leader}, 일본 총리: ${s.foreign.find(f=>f.id==='JP')?.leader}, 북한: ${s.foreign.find(f=>f.id==='NK')?.leader}`,
+    `- 미국 대통령: ${s.countries.find(f=>f.id==='US')?.leader}, 일본 총리: ${s.countries.find(f=>f.id==='JP')?.leader}, 북한: ${s.countries.find(f=>f.id==='NK')?.leader}`,
     `- 진행 분쟁: ${conflicts}`,
     `- 세계GDP ${intl.globalEconomy.worldGdpGrowth}%, WTI ${intl.globalEconomy.oilPriceWTI}$, S&P500 ${intl.sp500}`,
     ``,

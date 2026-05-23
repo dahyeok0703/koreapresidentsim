@@ -6,8 +6,8 @@ import type { PartyId, PresidentProfile, EducationEntry, CareerEntry } from '../
 
 const PRESETS: Partial<PresidentProfile>[] = [
   {
-    name: '이정민', nameHanja: '李廷民', nameEng: 'Lee Jung-min',
-    party: 'DPK', ideology: -35, age: 60,
+    name: '이정민', nameEng: 'Lee Jung-min',
+    party: 'DPK', ideology: -35,
     birthDate: '1965-04-12', birthplace: '경기도 안동시', gender: 'M',
     height: 174, weight: 78, bloodType: 'O', mbti: 'ENTJ', religion: '천주교',
     slogan: '다시, 사람이 먼저다',
@@ -31,8 +31,8 @@ const PRESETS: Partial<PresidentProfile>[] = [
     ],
   },
   {
-    name: '한지원', nameHanja: '韓智元', nameEng: 'Han Ji-won',
-    party: 'PPP', ideology: 55, age: 58,
+    name: '한지원', nameEng: 'Han Ji-won',
+    party: 'PPP', ideology: 55,
     birthDate: '1967-08-23', birthplace: '경상남도 거제시', gender: 'M',
     height: 178, weight: 82, bloodType: 'A', mbti: 'ESTJ', religion: '개신교',
     slogan: '강한 대한민국, 안전한 나라',
@@ -123,9 +123,6 @@ export default function SetupScreen() {
             <Field label="이름 (한글)">
               <input className="input w-full" value={p.name} onChange={e => set('name', e.target.value)} />
             </Field>
-            <Field label="한자">
-              <input className="input w-full" value={p.nameHanja ?? ''} onChange={e => set('nameHanja', e.target.value)} />
-            </Field>
             <Field label="영문명">
               <input className="input w-full" value={p.nameEng ?? ''} onChange={e => set('nameEng', e.target.value)} />
             </Field>
@@ -135,15 +132,10 @@ export default function SetupScreen() {
                 <option value="F">여성</option>
               </select>
             </Field>
-            <Field label="생년월일">
+            <Field label="생년월일 (자동으로 나이 계산)">
               <input type="date" className="input w-full" value={p.birthDate} onChange={e => {
                 set('birthDate', e.target.value);
-                const y = new Date(e.target.value).getFullYear();
-                set('age', 2025 - y);
               }} />
-            </Field>
-            <Field label="나이">
-              <input type="number" className="input w-full" value={p.age} onChange={e => set('age', Number(e.target.value))} />
             </Field>
             <Field label="출생지">
               <input className="input w-full" value={p.birthplace} onChange={e => set('birthplace', e.target.value)} />

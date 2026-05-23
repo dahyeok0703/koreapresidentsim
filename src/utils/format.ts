@@ -1,3 +1,13 @@
+export function ageFromBirth(birthDate: string, refDate?: string): number {
+  if (!birthDate) return 0;
+  const b = new Date(birthDate);
+  const r = refDate ? new Date(refDate) : new Date('2025-06-04');
+  let age = r.getFullYear() - b.getFullYear();
+  const m = r.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && r.getDate() < b.getDate())) age--;
+  return age;
+}
+
 export const fmtNum = (n: number, digits = 1) =>
   n.toLocaleString('ko-KR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 

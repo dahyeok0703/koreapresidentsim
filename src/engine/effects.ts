@@ -84,7 +84,7 @@ export function applyEffects(state: GameState, eff: PartialEffects): GameState {
     s.security = se;
   }
   if (eff.foreign) {
-    s.foreign = s.foreign.map(f => {
+    s.countries = s.countries.map(f => {
       const delta = (eff.foreign as any)[f.id];
       if (!delta) return f;
       return {
@@ -113,40 +113,123 @@ export function applyEffects(state: GameState, eff: PartialEffects): GameState {
   return s;
 }
 
+// === 시간 진행: 일 단위 자연 변동 + 월말 정산 ===
 export function advanceClock(state: GameState, days: number): GameState {
+  let s: GameState = { ...state };
+  for (let i = 0; i < days; i++) {
+    s = advanceOneDay(s);
+  }
+  return s;
+}
+
+function advanceOneDay(state: GameState): GameState {
   const cur = new Date(state.clock.currentDate);
-  cur.setDate(cur.getDate() + days);
+  cur.setDate(cur.getDate() + 1);
   const newDate = cur.toISOString().slice(0, 10);
+  const newMonth = newDate.slice(0, 7);
+  const lastMonth = state.economy.lastMonthlyReset.slice(0, 7);
+  const isNewMonth = newMonth !== lastMonth;
 
   let s: GameState = {
     ...state,
-    clock: { ...state.clock, currentDate: newDate, daysInOffice: state.clock.daysInOffice + days, turnNumber: state.clock.turnNumber + 1 },
+    clock: {
+      ...state.clock,
+      currentDate: newDate,
+      daysInOffice: state.clock.daysInOffice + 1,
+    },
   };
 
   const noise = (range: number) => (Math.random() - 0.5) * range;
+
+  // === 경제 자연 변동 (매일) ===
   const e = { ...s.economy };
-  e.kospi = Math.max(500, Math.round(e.kospi + noise(60)));
-  e.kosdaq = Math.max(300, Math.round(e.kosdaq + noise(20)));
-  e.fxUsdKrw = Math.max(800, Math.min(2000, Math.round(e.fxUsdKrw + noise(8))));
-  e.inflation = Math.round((e.inflation + noise(0.15)) * 100) / 100;
-  e.unemployment = Math.max(0.5, Math.round((e.unemployment + noise(0.1)) * 100) / 100);
-  e.consumerConfidence = clamp(e.consumerConfidence + noise(3), 0, 200);
-  e.businessConfidence = clamp(e.businessConfidence + noise(3), 0, 200);
-  e.history = [
-    ...e.history.slice(-59),
-    { date: newDate, gdp: e.gdpGrowth, cpi: e.inflation, unemp: e.unemployment, kospi: e.kospi, fxUsdKrw: e.fxUsdKrw },
-  ];
+  e.kospi = Math.max(500, Math.round(e.kospi + noise(15)));
+  e.kosdaq = Math.max(300, Math.round(e.kosdaq + noise(5)));
+  e.fxUsdKrw = Math.max(800, Math.min(2000, Math.round((e.fxUsdKrw + noise(3)) * 10) / 10));
+  e.inflation = Math.round((e.inflation + noise(0.03)) * 100) / 100;
+  e.unemployment = Math.max(0.5, Math.round((e.unemployment + noise(0.02)) * 100) / 100);
+  e.consumerConfidence = clamp(e.consumerConfidence + noise(0.5), 0, 200);
+  e.businessConfidence = clamp(e.businessConfidence + noise(0.5), 0, 200);
+  e.vkospi = Math.max(8, e.vkospi + noise(0.4));
+  e.treasury10y = Math.max(0.5, Math.round((e.treasury10y + noise(0.02)) * 100) / 100);
+
+  // 일별 수출입 누적 (대략 일 수출 $1.8B, 수입 $1.6B 평균)
+  const dailyExport = 1.7 + noise(0.4);
+  const dailyImport = 1.55 + noise(0.4);
+  e.monthlyExportUSD = Math.round((e.monthlyExportUSD + dailyExport) * 10) / 10;
+  e.monthlyImportUSD = Math.round((e.monthlyImportUSD + dailyImport) * 10) / 10;
+  e.monthlyTradeBalanceUSD = Math.round((e.monthlyExportUSD - e.monthlyImportUSD) * 10) / 10;
+
+  // === 월말 정산: 무역수지 → 외환보유고/국고 반영 후 리셋 ===
+  if (isNewMonth) {
+    const tradeBalance = e.monthlyTradeBalanceUSD; // $B
+    // 무역흑자/적자 → 외환보유고 (10% 반영)
+    e.fxReservesUSD = Math.max(100, Math.round((e.fxReservesUSD / 10 + tradeBalance * 0.1) * 10) / 10);
+    e.fxReservesUSD = e.fxReservesUSD * 10; // 보정
+    // 무역수지 → 국고에도 부분 반영 (세수효과, 흑자 시 +0.05조 / B$)
+    const treasuryImpact = tradeBalance * 0.05; // 조원
+    e.treasuryBalanceKRW = Math.round((e.treasuryBalanceKRW + treasuryImpact) * 100) / 100;
+    e.ytdTradeBalanceUSD = Math.round((e.ytdTradeBalanceUSD + tradeBalance) * 10) / 10;
+    e.currentAccountUSD = Math.round((e.currentAccountUSD + tradeBalance * 0.85) * 10) / 10;
+
+    // 월별 누적 리셋
+    e.monthlyExportUSD = 0;
+    e.monthlyImportUSD = 0;
+    e.monthlyTradeBalanceUSD = 0;
+    e.lastMonthlyReset = newDate.slice(0, 8) + '01';
+
+    // 1월 1일이면 연 누적도 리셋
+    if (newDate.endsWith('-01-01')) {
+      e.ytdTradeBalanceUSD = 0;
+      e.currentAccountUSD = 0;
+    }
+  }
+
+  // 히스토리 (주 1회 정도)
+  if (cur.getDay() === 1) {
+    e.history = [
+      ...e.history.slice(-59),
+      { date: newDate, gdp: e.gdpGrowth, cpi: e.inflation, unemp: e.unemployment, kospi: e.kospi, fxUsdKrw: e.fxUsdKrw },
+    ];
+  }
   s.economy = e;
 
-  const drift = (s.approval.overall - 50) * -0.03;
+  // === 지지율 회귀 + 노이즈 ===
+  const drift = (s.approval.overall - 50) * -0.008;
+  const newOverall = clamp(s.approval.overall + drift + noise(0.2), 0, 100);
   s.approval = {
     ...s.approval,
-    overall: clamp(s.approval.overall + drift + noise(0.6), 0, 100),
-    history: [...s.approval.history.slice(-119), { date: newDate, value: Math.round((s.approval.overall + drift) * 10) / 10 }],
+    overall: newOverall,
+    history: cur.getDay() === 1
+      ? [...s.approval.history.slice(-119), { date: newDate, value: Math.round(newOverall * 10) / 10 }]
+      : s.approval.history,
   };
 
-  // SNS 정서도 회귀
-  s.sns = { ...s.sns, sentimentScore: Math.round(Math.max(-100, Math.min(100, s.sns.sentimentScore * 0.92 + noise(2)))) };
+  // === SNS 정서 회귀 ===
+  s.sns = { ...s.sns, sentimentScore: Math.round(Math.max(-100, Math.min(100, s.sns.sentimentScore * 0.985 + noise(0.4)))) };
+
+  // === 안보 자연 변동 ===
+  const sec = { ...s.security };
+  sec.northKoreaTension = clamp(sec.northKoreaTension + noise(0.5));
+  sec.cyberThreatLevel = clamp(sec.cyberThreatLevel + noise(0.3));
+  s.security = sec;
+
+  // === 전쟁 개입 비용 차감 ===
+  if (s.security.warEngagements.length > 0) {
+    let costTotal = 0;
+    for (const w of s.security.warEngagements) {
+      costTotal += w.costPerMonth / 30; // 일별 비용
+    }
+    s.economy = { ...s.economy, treasuryBalanceKRW: Math.round((s.economy.treasuryBalanceKRW - costTotal) * 100) / 100 };
+  }
+
+  // === 행정 업무 진척 (매일 작은 진척) ===
+  s.adminTasks = s.adminTasks.map(t => {
+    if (t.status !== 'PROGRESS') return t;
+    const inc = t.priority === 'CRITICAL' ? 0.4 : t.priority === 'HIGH' ? 0.5 : t.priority === 'MED' ? 0.6 : 0.7;
+    const next = Math.min(100, t.progress + inc + Math.random() * 0.3);
+    return { ...t, progress: Math.round(next * 10) / 10, status: next >= 100 ? 'DONE' : 'PROGRESS' };
+  });
 
   return s;
 }

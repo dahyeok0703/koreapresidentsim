@@ -1,65 +1,45 @@
 // =============================================================
-// 대한민국 대통령 시뮬레이터 - 데이터 모델 (v2)
-// 2025년 6월 4일 기준 실 데이터 / 풀스펙
+// 대한민국 대통령 시뮬레이터 - 데이터 모델 (v3)
 // =============================================================
 
 export type ID = string;
 
-// ---------------- 정당 / 인물 ----------------
+// ---------------- 정당 ----------------
 export type PartyId =
-  | 'DPK'         // 더불어민주당
-  | 'PPP'         // 국민의힘
-  | 'RKP'         // 조국혁신당
-  | 'PRP'         // 개혁신당
-  | 'JP'          // 진보당
-  | 'NEW_FUTURE'  // 새로운미래
-  | 'BPK'         // 기본소득당
-  | 'SDP'         // 사회민주당
-  | 'IND';        // 무소속
+  | 'DPK' | 'PPP' | 'RKP' | 'PRP' | 'JP' | 'NEW_FUTURE' | 'BPK' | 'SDP' | 'IND';
 
 export interface Party {
   id: PartyId;
   name: string;
   shortName: string;
   color: string;
-  ideology: number;         // -100~+100
+  ideology: number;
   seats: number;
-  supportRate: number;      // %
+  supportRate: number;
   leader: string;
-  founded: string;          // year
+  founded: string;
   description: string;
 }
 
-// ---------------- 대통령 / 캐릭터 (풀스펙) ----------------
+// ---------------- 대통령 ----------------
 export interface PresidentProfile {
-  // 기본
   name: string;
-  nameHanja?: string;
   nameEng?: string;
   party: PartyId;
-  age: number;
-  birthDate: string;        // YYYY-MM-DD
+  birthDate: string;
   birthplace: string;
   gender: 'M' | 'F';
-  height: number;           // cm
-  weight: number;           // kg
+  height: number;
+  weight: number;
   bloodType: 'A' | 'B' | 'O' | 'AB';
   mbti?: string;
   religion: '무교' | '개신교' | '천주교' | '불교' | '원불교' | '기타';
-
-  // 정치
-  ideology: number;         // -100~+100
-  slogan: string;           // 캠페인 슬로건
-  inaugurationAddress: string; // 취임사 핵심 문장
+  ideology: number;
+  slogan: string;
+  inaugurationAddress: string;
   traits: string[];
-
-  // 학력
   education: EducationEntry[];
-
-  // 경력
   career: CareerEntry[];
-
-  // 가족
   family: {
     spouse?: string;
     spouseJob?: string;
@@ -67,37 +47,33 @@ export interface PresidentProfile {
     parents?: string;
     siblings?: string;
   };
-
-  // 자산/건강
-  assets: number;            // 억원
+  assets: number;
   assetsDetail?: string;
   healthStatus: '매우 양호' | '양호' | '보통' | '주의' | '위험';
   healthNotes?: string;
   hobby: string[];
   languages: string[];
-
-  // 임기
-  inauguratedAt: string;     // 2025-06-04
-  termEndsAt: string;        // 2030-06-03
-  termNumber: number;        // 21 (제21대)
+  inauguratedAt: string;
+  termEndsAt: string;
+  termNumber: number;
 }
 
 export interface EducationEntry {
   level: '고등학교' | '학사' | '석사' | '박사' | '명예박사' | '기타';
   school: string;
   major?: string;
-  year: number;              // 졸업연도
+  year: number;
 }
 
 export interface CareerEntry {
-  period: string;            // "2016~2020"
-  position: string;          // "제20대 국회의원"
-  org: string;               // "국회 / 인천 계양을"
+  period: string;
+  position: string;
+  org: string;
 }
 
-// ---------------- 시간 / 게임 진행 ----------------
+// ---------------- 시간 ----------------
 export interface GameClock {
-  currentDate: string;        // ISO
+  currentDate: string;
   daysInOffice: number;
   turnNumber: number;
   speed: 'paused' | 'slow' | 'normal' | 'fast';
@@ -107,12 +83,8 @@ export interface GameClock {
 export interface ApprovalBreakdown {
   overall: number;
   byAgeGroup: {
-    '18-29': number;
-    '30-39': number;
-    '40-49': number;
-    '50-59': number;
-    '60-69': number;
-    '70+': number;
+    '18-29': number; '30-39': number; '40-49': number;
+    '50-59': number; '60-69': number; '70+': number;
   };
   byRegion: Record<RegionId, number>;
   byGender: { male: number; female: number };
@@ -123,7 +95,7 @@ export interface ApprovalBreakdown {
   history: { date: string; value: number }[];
 }
 
-// ---------------- 지역 ----------------
+// ---------------- 지역 (행정구역) ----------------
 export type RegionId =
   | 'SEOUL' | 'BUSAN' | 'DAEGU' | 'INCHEON' | 'GWANGJU' | 'DAEJEON' | 'ULSAN' | 'SEJONG'
   | 'GYEONGGI' | 'GANGWON' | 'CHUNGBUK' | 'CHUNGNAM' | 'JEONBUK' | 'JEONNAM'
@@ -133,222 +105,300 @@ export interface Region {
   id: RegionId;
   name: string;
   capital: string;
-  population: number;        // 만 명
-  area: number;              // ㎢
-  grdp: number;              // 조 원, 지역내총생산
-  leaning: number;           // -100~+100
+  population: number;            // 만 명
+  area: number;                  // ㎢
+  grdp: number;                  // 조 원
+  perCapitaIncome: number;       // 만 원/연
+  leaning: number;
   economicHealth: number;
-  unemployment: number;
+  unemployment: number;          // %
+  birthRate: number;             // 합계출산율
+  agingRatio: number;            // 65세 이상 %
   governor: string;
   governorParty: PartyId;
+  subdivisions: number;          // 시군구 수
+  notableCities: string[];
+  industries: string[];          // 주요 산업
+  speciality: string[];          // 특산물
+  universities: number;
+  hospitals: number;
+  airports: string[];
+  ports: string[];
+  notableInfra: string[];        // 주요 인프라/랜드마크
 }
 
-// ---------------- 경제 지표 (대폭 확장) ----------------
+// ---------------- 경제 (대폭 확장 - 달러 단위 추가) ----------------
 export interface EconomicState {
-  // 성장
-  gdpGrowth: number;          // YoY %
-  gdpNominal: number;         // 조원
-  gdpPerCapita: number;       // 달러
-  gniPerCapita: number;       // 달러
+  // 성장 / GDP
+  gdpGrowth: number;
+  gdpNominalKRW: number;       // 조원
+  gdpNominalUSD: number;       // 십억$ ($B)
+  gdpPpp: number;              // 십억$ PPP
+  gdpPerCapita: number;        // $
+  gniPerCapita: number;        // $
 
   // 물가
-  inflation: number;          // CPI YoY %
+  inflation: number;
   coreInflation: number;
-  ppi: number;                // 생산자물가 YoY
-  groceryInflation: number;   // 신선식품 YoY
+  ppi: number;
+  groceryInflation: number;
+  housingInflation: number;
+  energyInflation: number;
+  servicesInflation: number;
 
   // 고용
   unemployment: number;
   youthUnemployment: number;
   laborParticipation: number;
   employmentRate: number;
+  femaleEmploymentRate: number;
+  irregularWorkerRatio: number; // 비정규직 비율 %
 
-  // 통화/금융
-  baseRate: number;           // 한은 기준금리
-  cd91: number;               // CD 91일물
-  treasury10y: number;        // 국고채 10년
-  m2Growth: number;           // 광의통화 증가율
+  // 금리/통화
+  baseRate: number;
+  cd91: number;
+  treasury10y: number;
+  treasury3y: number;
+  m2Growth: number;
+  m2Total: number;             // 조원
 
-  // 환율/시장
+  // 환율/시장 (달러 기준만)
   fxUsdKrw: number;
-  fxJpyKrw: number;           // 100엔 기준
-  fxCnyKrw: number;
-  fxEurKrw: number;
   kospi: number;
   kosdaq: number;
   kospi200: number;
-  vkospi: number;             // 변동성지수
-  marketCap: number;          // 시총 조원
+  vkospi: number;
+  marketCapUSD: number;        // 십억$
 
-  // 무역
+  // 무역 (월별 누적 + 연 누적)
   exportYoY: number;
   importYoY: number;
-  tradeBalance: number;       // 억$
-  currentAccount: number;     // 억$ (경상수지)
-  fdiInflow: number;          // 외국인직접투자, 억$
+  monthlyExportUSD: number;    // 이번 달 누적 ($B)
+  monthlyImportUSD: number;
+  monthlyTradeBalanceUSD: number; // 이번 달 무역수지 ($B)
+  ytdTradeBalanceUSD: number;     // 연 누적
+  currentAccountUSD: number;       // 경상수지 누적 ($B)
+  fdiInflowUSD: number;
+  fxReservesUSD: number;          // 외환보유고 ($B)
 
-  // 재정
-  fiscalBalance: number;      // GDP대비 %
+  // 재정 / 국고
+  fiscalBalance: number;
   primaryBalance: number;
-  nationalDebt: number;       // GDP대비 %
-  governmentSpending: number; // 조원 (총지출)
+  nationalDebt: number;
+  governmentSpending: number;
+  treasuryBalanceKRW: number;     // 국고 잔액 (조원, 누적)
+  taxRevenue: number;             // 연 세수 (조원)
 
-  // 부채/주택
-  householdDebt: number;      // GDP대비 %
-  householdDebtAbs: number;   // 조원 절대값
-  corporateDebt: number;      // GDP대비 %
+  // 부채
+  householdDebt: number;
+  householdDebtAbs: number;
+  corporateDebt: number;
+
+  // 주택
   housePriceIndex: number;
   housePriceYoY: number;
   jeonseIndex: number;
   jeonseYoY: number;
-  housingSupply: number;      // 만호/연
+  housingSupply: number;
+  unsoldHousesNationwide: number; // 만호 미분양
 
   // 심리
-  consumerConfidence: number; // CCSI, 100 기준
-  businessConfidence: number; // BSI
-  economicSentimentIndex: number; // ESI
+  consumerConfidence: number;
+  businessConfidence: number;
+  economicSentimentIndex: number;
 
-  // 산업
-  semiconductorExport: number;  // 억$, 핵심산업
+  // 산업 (연 수출 십억$)
+  semiconductorExport: number;
   autoExport: number;
   shipExport: number;
   steelExport: number;
-
-  // 외환보유고
-  fxReserves: number;         // 억$
+  petrochemicalExport: number;
+  batteryExport: number;
+  displayExport: number;
 
   // 추세
   history: { date: string; gdp: number; cpi: number; unemp: number; kospi: number; fxUsdKrw: number }[];
+
+  // 마지막 월 리셋 일자
+  lastMonthlyReset: string;
 }
 
-// ---------------- 사회 지표 (확장) ----------------
+// ---------------- 사회 ----------------
 export interface SocialState {
-  // 인구
-  totalPopulation: number;    // 만명
-  populationGrowth: number;   // YoY %
-  birthRate: number;          // 합계출산율
-  deathRate: number;          // 인구1천명당
+  totalPopulation: number;
+  populationGrowth: number;
+  birthRate: number;
+  deathRate: number;
   marriageRate: number;
   divorceRate: number;
-  agingIndex: number;         // 노령화지수
+  agingIndex: number;
   medianAge: number;
-  immigrantPopulation: number; // 만명
-
-  // 건강/안전
+  immigrantPopulation: number;
+  multiculturalFamilies: number; // 만 가구
   suicideRate: number;
   trafficDeaths: number;
   crimeIndex: number;
-  violentCrimeRate: number;   // 10만명당
-  drugCrimeCount: number;     // 연 누계
-
-  // 만족도
+  violentCrimeRate: number;
+  drugCrimeCount: number;
+  cyberCrimeCount: number;
   healthcareSatisfaction: number;
   educationSatisfaction: number;
   pensionTrust: number;
   publicSafetySatisfaction: number;
   governmentTrust: number;
-
-  // 갈등 지표
+  judicialTrust: number;
+  presidentialOfficeTrust: number;
+  parliamentTrust: number;
   genderConflictIndex: number;
   generationConflictIndex: number;
   regionalConflictIndex: number;
   classConflictIndex: number;
   immigrationSentiment: number;
-
-  // 환경
   airQualityPM25: number;
-  carbonEmission: number;     // 백만톤 CO2/연
-  greenEnergyShare: number;   // %
-
-  // 언론/자유
-  pressFreedomIndex: number;  // RSF 점수
-  corruptionPerceptionIndex: number; // CPI (100점 만점)
-  democracyIndex: number;     // EIU 0-10
-  giniIndex: number;          // 지니계수 0-1
-  povertyRate: number;        // 상대빈곤율 %
-
-  // 교육
+  airQualityPM10: number;
+  carbonEmission: number;
+  greenEnergyShare: number;
+  pressFreedomIndex: number;
+  corruptionPerceptionIndex: number;
+  democracyIndex: number;
+  giniIndex: number;
+  povertyRate: number;
   collegeAdmissionRate: number;
-  privateEduSpending: number; // 조원/연
-
-  // 부동산 체감
-  housingAffordability: number; // 0-100 (높을수록 취약)
+  privateEduSpending: number;
+  housingAffordability: number;
+  homeOwnershipRate: number;
+  internetPenetration: number;
+  smartphonePenetration: number;
+  energySelfSufficiency: number;
+  foodSelfSufficiency: number;
 }
 
-// ---------------- 안보 / 군사 (확장) ----------------
+// ---------------- 안보 ----------------
 export interface SecurityState {
-  // 위협도
   northKoreaTension: number;
   northKoreaProvocationRisk: number;
   cyberThreatLevel: number;
   terrorThreatLevel: number;
   defconLevel: 1 | 2 | 3 | 4 | 5;
-  watchcon: 1 | 2 | 3 | 4;    // 대북정보감시태세
-
-  // 군사력
+  watchcon: 1 | 2 | 3 | 4;
   rokMilitaryReadiness: number;
-  troopsActive: number;       // 만명 (현역)
-  troopsReserve: number;      // 만명 (예비역)
-  defenseBudget: number;      // 조원
+  troopsActive: number;
+  troopsReserve: number;
+  defenseBudget: number;
   defenseBudgetPctGdp: number;
-  globalFireRank: number;     // GFP 순위
-
-  // 보유 무기
-  tanks: number;
-  aircraft: number;
-  warships: number;
-  submarines: number;
-  missilesBallistic: number;
-  nukesAvailable: boolean;    // 핵 (한국 미보유 = false)
-
-  // 동맹
+  globalFireRank: number;
+  nukesAvailable: boolean;
   usAllianceStrength: number;
-  usftKorea: number;          // 주한미군 명
+  usftKorea: number;
   natoPartnership: number;
+  northKoreaNukes: number;
+  northKoreaMissilesYear: number;
 
-  // 북한
-  northKoreaNukes: number;    // 추정 보유 수
-  northKoreaMissilesYear: number; // 올해 발사 횟수
+  // 무기 인벤토리
+  weapons: WeaponEntry[];
+  // 군사기지
+  bases: MilitaryBase[];
+  // 부대 (사단/여단/함대 등)
+  units: MilitaryUnit[];
+
+  // 전쟁 / 분쟁 개입
+  warEngagements: WarEngagement[];
 }
 
-// ---------------- 외교 (대폭 확장) ----------------
-export type CountryId =
-  | 'US' | 'CN' | 'JP' | 'NK' | 'RU' | 'EU' | 'UK' | 'DE' | 'FR' | 'IN'
-  | 'VN' | 'AU' | 'TW' | 'PH' | 'ID' | 'TH' | 'SG' | 'CA' | 'BR' | 'MX'
-  | 'SA' | 'IL' | 'IR' | 'TR' | 'PL' | 'UA' | 'UN' | 'NATO' | 'ASEAN';
+export interface WeaponEntry {
+  id: ID;
+  category: '전차' | '장갑차' | '자주포' | '견인포' | '다연장' | '전투기' | '공격기' | '수송기'
+          | '헬기' | '구축함' | '잠수함' | '호위함' | '미사일' | '방공' | '레이더' | '드론' | '기타';
+  name: string;
+  count: number;
+  origin: string;             // 국산/미국/독일 등
+  status: '운용' | '도입중' | '퇴역대기' | '보관';
+  notes?: string;
+}
 
-export interface ForeignRelation {
-  id: CountryId;
+export interface MilitaryBase {
+  id: ID;
+  name: string;
+  type: '육군' | '해군' | '공군' | '해병' | '합동' | '미군' | '특수';
+  region: RegionId;
+  location: string;
+  personnel?: number;
+  desc?: string;
+}
+
+export interface MilitaryUnit {
+  id: ID;
+  name: string;
+  echelon: '군' | '군단' | '사단' | '여단' | '함대' | '비행단' | '특임' | '예비';
+  service: '육군' | '해군' | '공군' | '해병' | '예비' | '국직';
+  hq: string;
+  personnel?: number;
+  notes?: string;
+}
+
+export interface WarEngagement {
+  id: ID;
+  name: string;
+  parties: string[];
+  koreaRole: 'NONE' | 'DIPLOMATIC' | 'HUMANITARIAN' | 'LOGISTICAL' | 'COMBAT';
+  startDate: string;
+  troopsDeployed: number;
+  costPerMonth: number;       // 조원
+  notes: string;
+}
+
+// ---------------- 외교 (200개국 풀스펙) ----------------
+export type Continent = 'ASIA' | 'EUROPE' | 'AFRICA' | 'NA' | 'SA' | 'OCEANIA' | 'ME';
+
+export type AllianceStatus = 'ALLY' | 'PARTNER' | 'NEUTRAL' | 'RIVAL' | 'HOSTILE';
+
+export interface Country {
+  id: string;                 // ISO3 or special
   name: string;
   nameLocal?: string;
-  leader: string;
-  leaderTitle: string;
+  flag: string;               // emoji
+  continent: Continent;
   capital: string;
   population: number;         // 만명
-  gdp: number;                // 조달러 (명목)
-  militaryRank?: number;      // GFP
+  area: number;               // ㎢ (천 단위)
+  gdpUSD: number;             // 십억$ ($B)
+  gdpPerCapita: number;       // $
+  leader: string;
+  leaderTitle: string;
+  government: string;
   nuclear: boolean;
   unscPermanent: boolean;
-  alliance: 'ALLY' | 'PARTNER' | 'NEUTRAL' | 'RIVAL' | 'HOSTILE';
-
-  // 양자관계
-  relation: number;           // -100 ~ +100
+  hasEmbassyInKorea: boolean;
+  hasEmbassyInCountry: boolean; // 한국이 대사관 보유
+  alliance: AllianceStatus;
+  relation: number;           // -100 ~ 100
   trustLevel: number;         // 0-100
-  tradeVolume: number;        // 억$/연 (양자)
-  exportTo: number;           // 한국 수출
-  importFrom: number;         // 한국 수입
-  koreanResidents: number;    // 한인 (만명)
-
-  // 비자/협정
+  tradeVolumeUSD: number;     // 억$ /연
   hasFTA: boolean;
   visaFreeKorean: boolean;
+  koreanResidents: number;    // 명
   treaties: string[];
-
   recentEvents: string[];
-  flag?: string;              // 이모지
 }
 
-// ---------------- 국제 정세 ----------------
+// ---------------- 국제기구 ----------------
+export interface IntlOrg {
+  id: string;
+  name: string;
+  fullName?: string;
+  type: 'UN' | 'SECURITY' | 'ECONOMIC' | 'TRADE' | 'CULTURAL' | 'HEALTH' | 'ENVIRONMENT' | 'REGIONAL' | '기타';
+  founded: string;
+  hq: string;
+  memberCountries: string[];  // Country.id 배열
+  koreaMember: boolean;
+  koreaRole: '정회원' | '옵저버' | '비회원' | '의장국' | '비상임이사국' | '창설국';
+  contributionUSD?: number;    // 분담금 백만$/연
+  desc: string;
+  benefits?: string;
+  notes?: string;
+}
+
+// ---------------- 국제정세 ----------------
 export interface InternationalContext {
   ongoingConflicts: Conflict[];
   globalEconomy: {
@@ -356,18 +406,18 @@ export interface InternationalContext {
     chinaGrowth: number;
     usGrowth: number;
     euGrowth: number;
-    oilPriceWTI: number;      // $/배럴
+    oilPriceWTI: number;
     oilPriceBrent: number;
-    goldPrice: number;        // $/온스
-    dxy: number;              // 달러인덱스
+    goldPrice: number;
+    dxy: number;
   };
   sp500: number;
   nasdaq: number;
   nikkei: number;
   hangseng: number;
   shanghai: number;
-  bitcoin: number;            // USD
-  globalIssues: string[];     // 현재 주요 이슈
+  bitcoin: number;
+  globalIssues: string[];
 }
 
 export interface Conflict {
@@ -376,7 +426,7 @@ export interface Conflict {
   parties: string[];
   startDate: string;
   status: 'ACTIVE' | 'CEASEFIRE' | 'NEGOTIATING' | 'FROZEN';
-  intensity: number;          // 0-100
+  intensity: number;
   description: string;
   koreaInvolvement: 'NONE' | 'DIPLOMATIC' | 'HUMANITARIAN' | 'MILITARY';
 }
@@ -393,7 +443,7 @@ export interface AssemblyState {
   pendingBills: Bill[];
   passedBills: Bill[];
   vetoedBills: Bill[];
-  impeachmentMotions: number; // 누적
+  impeachmentMotions: number;
   filibusterDays: number;
 }
 
@@ -435,7 +485,7 @@ export interface JudiciaryState {
   prosecution: {
     prosecutorGeneral: string;
     publicTrust: number;
-    independenceIndex: number; // 0-100, 정치 독립성
+    independenceIndex: number;
     activeMajorInvestigations: string[];
   };
   police: {
@@ -445,12 +495,23 @@ export interface JudiciaryState {
   rulings: { date: string; court: string; summary: string }[];
 }
 
-// ---------------- 내각 / 인사 ----------------
+// ---------------- 행정부 (확장 - 부처/처/위원회/청 + 진행 업무) ----------------
 export type MinistryId =
   | 'PM' | 'MOEF' | 'MOFA' | 'MOU' | 'MND' | 'MOIS' | 'MOJ' | 'MOE'
   | 'MSIT' | 'MCST' | 'MOTIE' | 'MOHW' | 'MOEL' | 'MOLIT' | 'MAFRA'
-  | 'MOF' | 'ME' | 'MOGEF' | 'MPVA' | 'MOSPA' | 'MOSME'
-  | 'NIS' | 'BAI' | 'PPS' | 'BOK' | 'KCC' | 'FSC' | 'FTC';
+  | 'MOF' | 'ME' | 'MOGEF' | 'MPVA' | 'MOSME'
+  | 'BAI' | 'NIS' | 'PPS' | 'BOK' | 'KCC' | 'FSC' | 'FTC' | 'MFDS'
+  | 'KCS' | 'NTS' | 'PPS_PROC' | 'STAT' | 'PIPC' | 'ACRC' | 'HRC' | 'NEC'
+  | 'KMA' | 'KFS' | 'KIPO' | 'CHA' | 'NPS' | 'KOSTAT' | 'NPA' | 'NFA' | 'KCG'
+  | 'MMA' | 'DAPA' | 'KSWCC' | 'MOPAS' | 'PSC';
+
+export interface AdminBody {
+  id: MinistryId;
+  name: string;
+  category: '대통령실' | '국무총리실' | '부' | '처' | '청' | '위원회' | '독립기관';
+  parentId?: MinistryId;       // 부처 산하 청·실
+  ideologyImportance: number;  // 정치적 민감도
+}
 
 export interface Official {
   id: ID;
@@ -466,9 +527,22 @@ export interface Official {
   bio: string;
   age: number;
   education: string;
+  confirmed: boolean;          // 청문회 통과
 }
 
-// ---------------- 미디어 ----------------
+export interface AdminTask {
+  id: ID;
+  bodyId: MinistryId;
+  title: string;
+  detail: string;
+  progress: number;            // 0-100
+  startedAt: string;
+  dueAt?: string;
+  priority: 'LOW' | 'MED' | 'HIGH' | 'CRITICAL';
+  status: 'PROGRESS' | 'DONE' | 'BLOCKED' | 'CANCELED';
+}
+
+// ---------------- 미디어 / 기사 ----------------
 export type MediaId =
   | 'KBS' | 'MBC' | 'SBS' | 'JTBC' | 'YTN' | 'TVCHOSUN' | 'CHANNELA' | 'MBN'
   | 'CHOSUN' | 'JOONGANG' | 'DONGA' | 'HANI' | 'KYUNGHYANG' | 'OHMY'
@@ -481,47 +555,80 @@ export interface MediaOutlet {
   bias: number;
   influence: number;
   favorToPresident: number;
-  circulation?: number;       // 만부 (신문)
-  viewership?: number;        // % (방송)
+  circulation?: number;
+  viewership?: number;
   owner?: string;
 }
 
-// ---------------- SNS / 여론 ----------------
+export interface NewsArticle {
+  id: ID;
+  outlet: MediaId | string;
+  headline: string;
+  lead: string;            // 리드 문장
+  body?: string;           // 본문
+  date: string;
+  category: EventCategory;
+  bias: number;            // -100~100
+}
+
+// ---------------- SNS (포스트 강화) ----------------
 export interface SnsState {
   platforms: SnsPlatform[];
-  hotKeywords: { keyword: string; volume: number; sentiment: number }[]; // sentiment -100~100
-  presidentMentions: number;  // 일일 언급량 (만건)
-  sentimentScore: number;     // -100~100
+  hotKeywords: { keyword: string; volume: number; sentiment: number }[];
+  presidentMentions: number;
+  sentimentScore: number;
   recentPosts: SnsPost[];
-  protestSentiment: number;   // 0-100, 시위 동력
+  protestSentiment: number;
 }
 
 export interface SnsPlatform {
-  id: 'X' | 'INSTAGRAM' | 'FACEBOOK' | 'YOUTUBE' | 'KAKAO' | 'NAVER_CAFE' | 'DCINSIDE' | 'FMKOREA' | 'CLIEN';
+  id: 'X' | 'INSTAGRAM' | 'FACEBOOK' | 'YOUTUBE' | 'KAKAO' | 'NAVER_CAFE' | 'DCINSIDE' | 'FMKOREA' | 'CLIEN' | 'THREADS' | 'NAVER_BLOG';
   name: string;
-  monthlyUsers: number;       // 만명
+  monthlyUsers: number;
   mainAge: string;
-  bias: number;               // -100~100 평균 성향
-  presidentFavor: number;     // -100~100
+  bias: number;
+  presidentFavor: number;
   desc: string;
 }
 
 export interface SnsPost {
-  id: string;
+  id: ID;
   platform: SnsPlatform['id'];
   author: string;
+  handle?: string;
   content: string;
   likes: number;
   reposts: number;
+  comments: number;
   sentiment: number;
   timestamp: string;
+}
+
+// ---------------- 토건 (인프라/건축) ----------------
+export type BuildingCategory =
+  | '주거' | '상업' | '공업' | '교통' | '에너지' | '수자원' | '국방' | '교육'
+  | '의료' | '문화' | '연구' | '농수산' | '관광' | '해양' | '우주' | '기타';
+
+export interface Building {
+  id: ID;
+  name: string;
+  category: BuildingCategory;
+  region: RegionId | 'OFFSHORE' | 'OVERSEAS';
+  location: string;
+  builtYear?: number;
+  size?: string;          // "10층" or "30만㎡"
+  capacity?: number;
+  status: 'OPERATING' | 'CONSTRUCTING' | 'PLANNED' | 'DECOMMISSIONED';
+  cost?: number;          // 억원
+  desc?: string;
+  isLandmark?: boolean;
 }
 
 // ---------------- 이벤트 ----------------
 export type EventCategory =
   | 'ECONOMY' | 'DIPLOMACY' | 'SECURITY' | 'SOCIAL' | 'DISASTER'
   | 'SCANDAL' | 'POLITICS' | 'CULTURE' | 'TECH' | 'HEALTH' | 'NK'
-  | 'LEGAL' | 'INTERNATIONAL' | 'SNS' | 'MEDIA';
+  | 'LEGAL' | 'INTERNATIONAL' | 'SNS' | 'MEDIA' | 'WAR' | 'INFRA';
 
 export type EventSeverity = 'INFO' | 'MINOR' | 'MODERATE' | 'MAJOR' | 'CRITICAL';
 
@@ -537,6 +644,7 @@ export interface GameEvent {
   resolved?: boolean;
   resolution?: string;
   effects?: PartialEffects;
+  mandatory?: boolean;       // 필수 처리
 }
 
 export interface EventChoice {
@@ -547,7 +655,7 @@ export interface EventChoice {
   ideology: number;
 }
 
-// ---------------- 효과 시스템 ----------------
+// ---------------- 효과 ----------------
 export interface PartialEffects {
   approval?: number;
   approvalByAge?: Partial<ApprovalBreakdown['byAgeGroup']>;
@@ -557,11 +665,12 @@ export interface PartialEffects {
   economy?: Partial<Pick<EconomicState,
     'gdpGrowth' | 'inflation' | 'coreInflation' | 'unemployment' | 'youthUnemployment' |
     'kospi' | 'kosdaq' | 'fxUsdKrw' | 'consumerConfidence' | 'businessConfidence' |
-    'housePriceYoY' | 'jeonseYoY' | 'fiscalBalance' | 'baseRate' | 'currentAccount' |
-    'fxReserves' | 'tradeBalance' | 'exportYoY'>>;
+    'housePriceYoY' | 'jeonseYoY' | 'fiscalBalance' | 'baseRate' |
+    'currentAccountUSD' | 'fxReservesUSD' | 'monthlyTradeBalanceUSD' | 'exportYoY' |
+    'treasuryBalanceKRW' | 'taxRevenue'>>;
   social?: Partial<SocialState>;
-  security?: Partial<SecurityState>;
-  foreign?: Partial<Record<CountryId, { relation?: number; trust?: number }>>;
+  security?: Partial<Omit<SecurityState, 'weapons' | 'bases' | 'units' | 'warEngagements'>>;
+  foreign?: Record<string, { relation?: number; trust?: number }>;
   judiciary?: { supremeTrust?: number; ccTrust?: number; prosecutionTrust?: number; prosecutionIndep?: number };
   sns?: { sentiment?: number; protestSentiment?: number; mentions?: number };
   notes?: string;
@@ -616,15 +725,19 @@ export interface GameState {
   economy: EconomicState;
   social: SocialState;
   security: SecurityState;
-  foreign: ForeignRelation[];
+  countries: Country[];
+  intlOrgs: IntlOrg[];
   international: InternationalContext;
   assembly: AssemblyState;
   judiciary: JudiciaryState;
+  adminBodies: AdminBody[];
   cabinet: Official[];
+  adminTasks: AdminTask[];
+  buildings: Building[];
   media: MediaOutlet[];
+  articles: NewsArticle[];
   sns: SnsState;
   events: GameEvent[];
-  newsTicker: string[];
   chat: ChatMessage[];
   policies: Policy[];
   parties: Party[];

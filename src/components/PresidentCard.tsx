@@ -1,10 +1,13 @@
 import { useGame } from '../store';
 import { Panel } from './common';
+import { ageFromBirth } from '../utils/format';
 
 export default function PresidentCard() {
   const p = useGame(s => s.state!.president);
+  const today = useGame(s => s.state!.clock.currentDate);
   const parties = useGame(s => s.state!.parties);
   const party = parties.find(x => x.id === p.party);
+  const age = ageFromBirth(p.birthDate, today);
   return (
     <Panel title="대통령">
       <div className="flex items-start gap-3">
@@ -12,7 +15,7 @@ export default function PresidentCard() {
           {p.name[0]}
         </div>
         <div className="flex-1">
-          <div className="text-base font-bold">{p.name} <span className="text-[10px] text-slate-400">{p.nameHanja ?? ''}</span></div>
+          <div className="text-base font-bold">{p.name}</div>
           <div className="text-[10px] text-slate-500">{p.nameEng}</div>
           <div className="text-xs mt-0.5">
             <span style={{ color: party?.color }} className="font-semibold">{party?.name}</span>
@@ -22,7 +25,8 @@ export default function PresidentCard() {
         </div>
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-2 text-[11px]">
-        <KV k="나이/성별" v={`${p.age}세 / ${p.gender === 'M' ? '남' : '여'}`} />
+        <KV k="생년월일" v={`${p.birthDate} (${age}세)`} />
+        <KV k="성별" v={p.gender === 'M' ? '남' : '여'} />
         <KV k="이념" v={`${p.ideology > 0 ? '+' : ''}${p.ideology} (${p.ideology < -30 ? '진보' : p.ideology > 30 ? '보수' : '중도'})`} />
         <KV k="신장/체중" v={`${p.height}cm / ${p.weight}kg`} />
         <KV k="혈액형/MBTI" v={`${p.bloodType} / ${p.mbti ?? '-'}`} />

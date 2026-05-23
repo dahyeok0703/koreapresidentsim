@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useGame } from '../store';
 import { Panel, Stat, StatBar, Chip } from './common';
-import { fmtNum, fmtPct, fmtInt, severityColor, categoryLabel } from '../utils/format';
-import { LineChart, Line, ResponsiveContainer, YAxis, XAxis, Tooltip, AreaChart, Area } from 'recharts';
+import { fmtNum, fmtPct, fmtInt, severityColor, categoryLabel, ageFromBirth } from '../utils/format';
+import { LineChart, Line, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'recharts';
 import { MINISTRY_CATEGORY } from '../data/ministries';
-import { randomKoreanName, genId } from '../data/initialState';
-import type { CountryId } from '../types/game';
+import { CONTINENT_NAME } from '../data/countries';
+import { CONFIRMATION_REQUIRED, NOMINEE_POOL } from '../data/adminBodies';
+import type { Continent, MinistryId, BuildingCategory, RegionId, AllianceStatus, WeaponEntry } from '../types/game';
 
 const TABS = [
   { id: 'OVERVIEW',     label: '종합',     icon: '📊' },
@@ -14,10 +15,12 @@ const TABS = [
   { id: 'MILITARY',     label: '군사',     icon: '🛡️' },
   { id: 'DIPLOMACY',    label: '외교',     icon: '🌐' },
   { id: 'POLITICS',     label: '정치',     icon: '🏛️' },
-  { id: 'CABINET',      label: '행정부',   icon: '🏢' },
+  { id: 'ADMIN',        label: '행정부',   icon: '🏢' },
   { id: 'ASSEMBLY',     label: '국회',     icon: '🏛️' },
   { id: 'JUDICIARY',    label: '사법부',   icon: '⚖️' },
-  { id: 'EVENTS',       label: '사건로그', icon: '📜' },
+  { id: 'REGIONS',      label: '행정구역', icon: '🗺️' },
+  { id: 'INFRA',        label: '토건',     icon: '🏗️' },
+  { id: 'EVENTS',       label: '사건',     icon: '📜' },
   { id: 'INTL',         label: '국제',     icon: '🌍' },
   { id: 'MEDIA',        label: '언론',     icon: '📰' },
   { id: 'SNS',          label: 'SNS',      icon: '📱' },
@@ -26,19 +29,14 @@ type TabId = typeof TABS[number]['id'];
 
 export default function RightTabs() {
   const [tab, setTab] = useState<TabId>('OVERVIEW');
-  const pendingCount = useGame(s => s.state!.events.filter(e => !e.resolved && e.choices?.length).length);
-
+  const pendingCount = useGame(s => s.state!.events.filter(e => !e.resolved && (e.choices?.length || e.mandatory)).length);
   return (
     <div className="h-full flex flex-col bg-slate-900/40 border border-slate-800 rounded-lg overflow-hidden">
       <div className="border-b border-slate-800 flex flex-wrap gap-px bg-slate-950">
         {TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex-1 min-w-[70px] text-[11px] px-2 py-1.5 transition-colors ${
-              tab === t.id ? 'bg-rok-blue text-white font-semibold' : 'bg-slate-900 hover:bg-slate-800 text-slate-300'
-            }`}
-          >
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`flex-1 min-w-[62px] text-[10px] px-1.5 py-1.5 transition-colors ${
+              tab === t.id ? 'bg-rok-blue text-white font-semibold' : 'bg-slate-900 hover:bg-slate-800 text-slate-300'}`}>
             {t.icon} {t.label}
             {t.id === 'EVENTS' && pendingCount > 0 && (
               <span className="ml-1 inline-block bg-red-600 text-white text-[9px] px-1 rounded">{pendingCount}</span>
@@ -46,7 +44,6 @@ export default function RightTabs() {
           </button>
         ))}
       </div>
-
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
         {tab === 'OVERVIEW'  && <OverviewTab />}
         {tab === 'ECONOMY'   && <EconomyTab />}
@@ -54,11 +51,13 @@ export default function RightTabs() {
         {tab === 'MILITARY'  && <MilitaryTab />}
         {tab === 'DIPLOMACY' && <DiplomacyTab />}
         {tab === 'POLITICS'  && <PoliticsTab />}
-        {tab === 'CABINET'   && <CabinetTab />}
+        {tab === 'ADMIN'     && <AdminTab />}
         {tab === 'ASSEMBLY'  && <AssemblyTab />}
         {tab === 'JUDICIARY' && <JudiciaryTab />}
+        {tab === 'REGIONS'   && <RegionsTab />}
+        {tab === 'INFRA'     && <InfraTab />}
         {tab === 'EVENTS'    && <EventsTab />}
-        {tab === 'INTL'      && <InternationalTab />}
+        {tab === 'INTL'      && <IntlTab />}
         {tab === 'MEDIA'     && <MediaTab />}
         {tab === 'SNS'       && <SnsTab />}
       </div>
@@ -66,124 +65,131 @@ export default function RightTabs() {
   );
 }
 
-// ============== 종합 ==============
+// ============ 종합 ============
 function OverviewTab() {
   const s = useGame(st => st.state)!;
+  const p = s.president;
+  const age = ageFromBirth(p.birthDate, s.clock.currentDate);
   return (
     <>
       <Panel title="국가 개요">
         <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-          <Stat label="대통령" value={s.president.name} />
+          <Stat label="대통령"    value={`${s.president.name} (${age}세)`} />
           <Stat label="소속 정당" value={s.parties.find(p => p.id === s.president.party)?.name ?? ''} />
-          <Stat label="취임일" value={s.president.inauguratedAt} />
-          <Stat label="현재일자" value={s.clock.currentDate} />
-          <Stat label="임기" value={`${(s.clock.daysInOffice / 365).toFixed(2)}년 / 5년`} />
-          <Stat label="총 인구" value={`${fmtInt(s.social.totalPopulation)}만명`} />
-          <Stat label="GDP (명목)" value={`${fmtInt(s.economy.gdpNominal)}조원`} />
-          <Stat label="1인당 GDP" value={`$${fmtInt(s.economy.gdpPerCapita)}`} />
+          <Stat label="취임일"    value={s.president.inauguratedAt} />
+          <Stat label="현재일자"  value={s.clock.currentDate} />
+          <Stat label="임기"      value={`${(s.clock.daysInOffice / 365).toFixed(2)}년 / 5년`} />
+          <Stat label="총 인구"   value={`${fmtInt(s.social.totalPopulation)}만명`} />
+          <Stat label="GDP (명목)" value={`$${fmtInt(s.economy.gdpNominalUSD)}B`} sub={`₩${fmtInt(s.economy.gdpNominalKRW)}조`} />
+          <Stat label="1인당 GDP"  value={`$${fmtInt(s.economy.gdpPerCapita)}`} />
           <Stat label="국가신용등급" value="AA (S&P)" />
           <Stat label="군사력 (GFP)" value={`세계 ${s.security.globalFireRank}위`} />
+          <Stat label="국고 잔액"   value={`₩${fmtNum(s.economy.treasuryBalanceKRW, 2)}조`} />
+          <Stat label="외환보유고"  value={`$${fmtInt(s.economy.fxReservesUSD)}B`} />
         </div>
       </Panel>
       <Panel title="핵심 지표 한눈에">
         <div className="grid grid-cols-2 gap-2">
           <MiniStat label="지지율" value={`${s.approval.overall.toFixed(1)}%`} tone={s.approval.overall >= 50 ? 'good' : s.approval.overall >= 30 ? 'warn' : 'bad'} />
-          <MiniStat label="물가" value={`${s.economy.inflation.toFixed(1)}%`} tone={Math.abs(s.economy.inflation - 2) < 0.7 ? 'good' : 'warn'} />
+          <MiniStat label="물가"   value={`${s.economy.inflation.toFixed(1)}%`} tone={Math.abs(s.economy.inflation - 2) < 0.7 ? 'good' : 'warn'} />
           <MiniStat label="실업률" value={`${s.economy.unemployment.toFixed(1)}%`} tone={s.economy.unemployment <= 3.5 ? 'good' : 'warn'} />
           <MiniStat label="GDP성장" value={`${s.economy.gdpGrowth.toFixed(1)}%`} tone={s.economy.gdpGrowth >= 2 ? 'good' : s.economy.gdpGrowth >= 0 ? 'warn' : 'bad'} />
           <MiniStat label="코스피" value={fmtInt(s.economy.kospi)} tone="neutral" />
-          <MiniStat label="환율" value={`₩${fmtInt(s.economy.fxUsdKrw)}`} tone="neutral" />
+          <MiniStat label="환율"   value={`$1=₩${fmtInt(s.economy.fxUsdKrw)}`} tone="neutral" />
           <MiniStat label="DEFCON" value={String(s.security.defconLevel)} tone={s.security.defconLevel >= 4 ? 'good' : 'bad'} />
-          <MiniStat label="北 긴장" value={`${s.security.northKoreaTension}`} tone={s.security.northKoreaTension < 50 ? 'good' : 'bad'} />
+          <MiniStat label="北 긴장" value={`${s.security.northKoreaTension.toFixed(0)}`} tone={s.security.northKoreaTension < 50 ? 'good' : 'bad'} />
           <MiniStat label="출산율" value={s.social.birthRate.toFixed(2)} tone={s.social.birthRate >= 1.0 ? 'good' : 'bad'} />
           <MiniStat label="자살률" value={s.social.suicideRate.toFixed(1)} tone={s.social.suicideRate <= 20 ? 'good' : 'bad'} />
           <MiniStat label="여당 의석" value={`${s.assembly.rulingCoalitionSeats}/300`} tone={s.assembly.rulingCoalitionSeats >= 151 ? 'good' : 'warn'} />
-          <MiniStat label="SNS 정서" value={`${s.sns.sentimentScore > 0 ? '+' : ''}${s.sns.sentimentScore}`} tone={s.sns.sentimentScore >= 0 ? 'good' : 'bad'} />
+          <MiniStat label="SNS 정서" value={`${s.sns.sentimentScore > 0 ? '+' : ''}${s.sns.sentimentScore.toFixed(0)}`} tone={s.sns.sentimentScore >= 0 ? 'good' : 'bad'} />
         </div>
       </Panel>
-      <Panel title="대통령 프로필">
-        <div className="text-xs space-y-1">
-          <Stat label="생년월일" value={s.president.birthDate} />
-          <Stat label="출생지"   value={s.president.birthplace} />
-          <Stat label="신장/체중" value={`${s.president.height}cm / ${s.president.weight}kg`} />
-          <Stat label="혈액형/MBTI" value={`${s.president.bloodType} / ${s.president.mbti ?? '-'}`} />
-          <Stat label="종교"     value={s.president.religion} />
-          <Stat label="자산"     value={`${s.president.assets}억원`} />
-          <Stat label="건강"     value={s.president.healthStatus} />
-          <div className="pt-1 border-t border-slate-800 mt-1">
-            <div className="text-[10px] text-slate-500">슬로건</div>
-            <div className="text-slate-200 italic">"{s.president.slogan}"</div>
-          </div>
-          <details>
-            <summary className="text-[10px] text-slate-400 cursor-pointer">학력 ▾</summary>
-            <ul className="mt-1 space-y-0.5 text-[11px]">
-              {s.president.education.map((e, i) => (
-                <li key={i}>· {e.school} {e.major && `(${e.major})`} {e.level} {e.year}</li>
-              ))}
-            </ul>
-          </details>
-          <details>
-            <summary className="text-[10px] text-slate-400 cursor-pointer">경력 ▾</summary>
-            <ul className="mt-1 space-y-0.5 text-[11px]">
-              {s.president.career.map((c, i) => (
-                <li key={i}>· [{c.period}] {c.position} — {c.org}</li>
-              ))}
-            </ul>
-          </details>
+      <Panel title="이번 달 무역수지 (월말 정산 후 외환·국고 반영)">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+          <Stat label="이번달 수출" value={`$${fmtNum(s.economy.monthlyExportUSD, 1)}B`} />
+          <Stat label="이번달 수입" value={`$${fmtNum(s.economy.monthlyImportUSD, 1)}B`} />
+          <Stat label="이번달 수지" value={`$${fmtNum(s.economy.monthlyTradeBalanceUSD, 1)}B`}
+            color={s.economy.monthlyTradeBalanceUSD >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+          <Stat label="YTD 무역수지" value={`$${fmtNum(s.economy.ytdTradeBalanceUSD, 1)}B`} />
         </div>
+      </Panel>
+      <Panel title="진행 중 전쟁·분쟁 개입">
+        {s.security.warEngagements.length === 0
+          ? <div className="text-[11px] text-slate-500">개입 없음</div>
+          : s.security.warEngagements.map(w => (
+            <div key={w.id} className="bg-slate-950/40 border border-red-900 rounded p-2 mb-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-red-300 font-semibold">{w.name}</span>
+                <Chip>{w.koreaRole}</Chip>
+              </div>
+              <div className="text-[10px] text-slate-400">병력 {w.troopsDeployed}명 · 월 비용 {w.costPerMonth.toFixed(2)}조원 · 개시 {w.startDate}</div>
+              <div className="text-[10px] text-slate-300 mt-0.5">{w.notes}</div>
+            </div>
+          ))}
       </Panel>
     </>
   );
 }
 
-// ============== 경제 ==============
+// ============ 경제 ============
 function EconomyTab() {
   const e = useGame(s => s.state!.economy);
   return (
     <>
-      <Panel title="거시지표">
+      <Panel title="거시 (USD 기준 명목 GDP/시총)">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-          <Stat label="GDP성장률 (YoY)" value={fmtPct(e.gdpGrowth)} color={e.gdpGrowth >= 2 ? 'text-emerald-400' : 'text-yellow-400'} />
-          <Stat label="GDP (명목)" value={`${fmtInt(e.gdpNominal)}조원`} />
+          <Stat label="GDP성장률" value={fmtPct(e.gdpGrowth)} color={e.gdpGrowth >= 2 ? 'text-emerald-400' : 'text-yellow-400'} />
+          <Stat label="GDP 명목"  value={`$${fmtInt(e.gdpNominalUSD)}B`} sub={`₩${fmtInt(e.gdpNominalKRW)}조`} />
+          <Stat label="GDP PPP"   value={`$${fmtInt(e.gdpPpp)}B`} />
           <Stat label="1인당 GDP" value={`$${fmtInt(e.gdpPerCapita)}`} />
           <Stat label="1인당 GNI" value={`$${fmtInt(e.gniPerCapita)}`} />
-          <Stat label="물가 (CPI)" value={fmtPct(e.inflation)} />
-          <Stat label="근원물가" value={fmtPct(e.coreInflation)} />
-          <Stat label="생산자물가 PPI" value={fmtPct(e.ppi)} />
-          <Stat label="신선식품" value={fmtPct(e.groceryInflation)} />
+          <Stat label="시가총액"  value={`$${fmtInt(e.marketCapUSD)}B`} />
         </div>
       </Panel>
-      <Panel title="고용·노동">
+      <Panel title="물가 (YoY)">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-          <Stat label="실업률" value={fmtPct(e.unemployment)} />
-          <Stat label="청년실업률" value={fmtPct(e.youthUnemployment)} />
-          <Stat label="고용률" value={fmtPct(e.employmentRate)} />
-          <Stat label="경제활동참가율" value={fmtPct(e.laborParticipation)} />
+          <Stat label="CPI"       value={fmtPct(e.inflation)} />
+          <Stat label="근원물가"  value={fmtPct(e.coreInflation)} />
+          <Stat label="생산자물가" value={fmtPct(e.ppi)} />
+          <Stat label="신선식품"  value={fmtPct(e.groceryInflation)} />
+          <Stat label="에너지"    value={fmtPct(e.energyInflation)} />
+          <Stat label="주거"      value={fmtPct(e.housingInflation)} />
+          <Stat label="서비스"    value={fmtPct(e.servicesInflation)} />
         </div>
       </Panel>
-      <Panel title="금리·통화">
+      <Panel title="고용 / 노동">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+          <Stat label="실업률"    value={fmtPct(e.unemployment)} />
+          <Stat label="청년실업"  value={fmtPct(e.youthUnemployment)} />
+          <Stat label="고용률"    value={fmtPct(e.employmentRate)} />
+          <Stat label="여성고용"  value={fmtPct(e.femaleEmploymentRate)} />
+          <Stat label="경활참가율" value={fmtPct(e.laborParticipation)} />
+          <Stat label="비정규직"  value={fmtPct(e.irregularWorkerRatio)} />
+        </div>
+      </Panel>
+      <Panel title="금리 / 통화">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
           <Stat label="한은 기준금리" value={fmtPct(e.baseRate, 2)} />
-          <Stat label="CD 91일물" value={fmtPct(e.cd91, 2)} />
-          <Stat label="국고채 10년" value={fmtPct(e.treasury10y, 2)} />
-          <Stat label="M2 증가율" value={fmtPct(e.m2Growth)} />
+          <Stat label="CD 91일"       value={fmtPct(e.cd91, 2)} />
+          <Stat label="국고채 3년"    value={fmtPct(e.treasury3y, 2)} />
+          <Stat label="국고채 10년"   value={fmtPct(e.treasury10y, 2)} />
+          <Stat label="M2 증가율"     value={fmtPct(e.m2Growth)} />
+          <Stat label="M2 총량"       value={`₩${fmtInt(e.m2Total)}조`} />
         </div>
       </Panel>
-      <Panel title="외환·시장">
+      <Panel title="환율 (달러 기준)">
+        <Stat label="USD/KRW" value={`$1 = ₩${fmtNum(e.fxUsdKrw, 1)}`} />
+        <Stat label="VKOSPI" value={fmtNum(e.vkospi, 1)} />
+      </Panel>
+      <Panel title="증시">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-          <Stat label="USD/KRW" value={`₩${fmtInt(e.fxUsdKrw)}`} />
-          <Stat label="100JPY/KRW" value={`₩${fmtNum(e.fxJpyKrw, 2)}`} />
-          <Stat label="CNY/KRW" value={`₩${fmtNum(e.fxCnyKrw, 2)}`} />
-          <Stat label="EUR/KRW" value={`₩${fmtInt(e.fxEurKrw)}`} />
-          <Stat label="코스피" value={fmtInt(e.kospi)} />
-          <Stat label="코스닥" value={fmtInt(e.kosdaq)} />
+          <Stat label="코스피"   value={fmtInt(e.kospi)} />
+          <Stat label="코스닥"   value={fmtInt(e.kosdaq)} />
           <Stat label="KOSPI200" value={fmtInt(e.kospi200)} />
-          <Stat label="VKOSPI" value={fmtNum(e.vkospi, 1)} />
-          <Stat label="시가총액" value={`${fmtInt(e.marketCap)}조`} />
-          <Stat label="외환보유고" value={`${fmtInt(e.fxReserves)}억$`} />
+          <Stat label="시총 (전체)" value={`$${fmtInt(e.marketCapUSD)}B`} />
         </div>
         <div className="h-24 mt-2">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer>
             <LineChart data={e.history}>
               <XAxis dataKey="date" hide />
               <YAxis yAxisId="k" hide domain={['dataMin - 50', 'dataMax + 50']} />
@@ -195,207 +201,364 @@ function EconomyTab() {
           </ResponsiveContainer>
         </div>
       </Panel>
-      <Panel title="무역·국제수지">
+      <Panel title="무역 (월별 누적 · 월말 리셋)">
+        <Stat label="이번달 수출" value={`$${fmtNum(e.monthlyExportUSD, 2)}B`} />
+        <Stat label="이번달 수입" value={`$${fmtNum(e.monthlyImportUSD, 2)}B`} />
+        <Stat label="이번달 수지" value={`$${fmtNum(e.monthlyTradeBalanceUSD, 2)}B`}
+          color={e.monthlyTradeBalanceUSD >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+        <div className="border-t border-slate-800 my-1.5"></div>
+        <Stat label="YTD 무역수지" value={`$${fmtNum(e.ytdTradeBalanceUSD, 1)}B`} />
+        <Stat label="경상수지 YTD" value={`$${fmtNum(e.currentAccountUSD, 1)}B`} />
+        <Stat label="FDI 유입"     value={`$${fmtNum(e.fdiInflowUSD, 1)}B`} />
+        <Stat label="외환보유고"   value={`$${fmtInt(e.fxReservesUSD)}B`} />
+        <div className="text-[10px] text-slate-500 mt-2">※ 월말 정산 시 무역수지가 외환보유고와 국고에 자동 반영됩니다.</div>
+      </Panel>
+      <Panel title="산업별 수출 (연 십억$)">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-          <Stat label="수출 YoY" value={fmtPct(e.exportYoY)} />
-          <Stat label="수입 YoY" value={fmtPct(e.importYoY)} />
-          <Stat label="무역수지" value={`${fmtInt(e.tradeBalance)}억$`} />
-          <Stat label="경상수지" value={`${fmtInt(e.currentAccount)}억$`} />
-          <Stat label="FDI 유입" value={`${fmtInt(e.fdiInflow)}억$`} />
-        </div>
-        <div className="mt-2 text-[10px] text-slate-500 mb-1">주요 산업 수출 (억$/연)</div>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-          <Stat label="반도체" value={fmtInt(e.semiconductorExport)} />
-          <Stat label="자동차" value={fmtInt(e.autoExport)} />
-          <Stat label="선박" value={fmtInt(e.shipExport)} />
-          <Stat label="철강" value={fmtInt(e.steelExport)} />
+          <Stat label="반도체"    value={`$${fmtInt(e.semiconductorExport)}B`} />
+          <Stat label="자동차"    value={`$${fmtInt(e.autoExport)}B`} />
+          <Stat label="선박"      value={`$${fmtInt(e.shipExport)}B`} />
+          <Stat label="철강"      value={`$${fmtInt(e.steelExport)}B`} />
+          <Stat label="석유화학"  value={`$${fmtInt(e.petrochemicalExport)}B`} />
+          <Stat label="배터리"    value={`$${fmtInt(e.batteryExport)}B`} />
+          <Stat label="디스플레이" value={`$${fmtInt(e.displayExport)}B`} />
         </div>
       </Panel>
-      <Panel title="재정·부채">
+      <Panel title="재정 / 국고">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-          <Stat label="재정수지/GDP" value={fmtPct(e.fiscalBalance)} />
-          <Stat label="기초재정수지" value={fmtPct(e.primaryBalance)} />
-          <Stat label="국가채무/GDP" value={fmtPct(e.nationalDebt)} />
-          <Stat label="정부총지출" value={`${fmtInt(e.governmentSpending)}조`} />
-          <Stat label="가계부채/GDP" value={fmtPct(e.householdDebt)} />
-          <Stat label="가계부채 절대" value={`${fmtInt(e.householdDebtAbs)}조`} />
-          <Stat label="기업부채/GDP" value={fmtPct(e.corporateDebt)} />
+          <Stat label="국고 잔액"     value={`₩${fmtNum(e.treasuryBalanceKRW, 2)}조`} color={e.treasuryBalanceKRW >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+          <Stat label="연 세수"       value={`₩${fmtInt(e.taxRevenue)}조`} />
+          <Stat label="재정수지/GDP"  value={fmtPct(e.fiscalBalance)} />
+          <Stat label="기초재정수지"  value={fmtPct(e.primaryBalance)} />
+          <Stat label="국가채무/GDP"  value={fmtPct(e.nationalDebt)} />
+          <Stat label="정부총지출"    value={`₩${fmtInt(e.governmentSpending)}조`} />
+          <Stat label="가계부채/GDP"  value={fmtPct(e.householdDebt)} />
+          <Stat label="가계부채 총액" value={`₩${fmtInt(e.householdDebtAbs)}조`} />
+          <Stat label="기업부채/GDP"  value={fmtPct(e.corporateDebt)} />
         </div>
       </Panel>
-      <Panel title="주택·심리">
+      <Panel title="주택 / 심리">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
           <Stat label="주택가격지수" value={fmtNum(e.housePriceIndex, 1)} />
-          <Stat label="주택 YoY" value={fmtPct(e.housePriceYoY)} />
-          <Stat label="전세지수" value={fmtNum(e.jeonseIndex, 1)} />
-          <Stat label="전세 YoY" value={fmtPct(e.jeonseYoY)} />
-          <Stat label="주택공급" value={`${fmtNum(e.housingSupply, 1)}만호`} />
-          <Stat label="소비심리 CCSI" value={fmtNum(e.consumerConfidence, 0)} />
-          <Stat label="기업심리 BSI" value={fmtNum(e.businessConfidence, 0)} />
-          <Stat label="경제심리 ESI" value={fmtNum(e.economicSentimentIndex, 0)} />
+          <Stat label="주택 YoY"     value={fmtPct(e.housePriceYoY)} />
+          <Stat label="전세지수"     value={fmtNum(e.jeonseIndex, 1)} />
+          <Stat label="전세 YoY"     value={fmtPct(e.jeonseYoY)} />
+          <Stat label="주택공급"     value={`${fmtNum(e.housingSupply, 1)}만호`} />
+          <Stat label="미분양"       value={`${fmtNum(e.unsoldHousesNationwide, 1)}만호`} />
+          <Stat label="소비심리"     value={fmtNum(e.consumerConfidence, 0)} />
+          <Stat label="기업심리"     value={fmtNum(e.businessConfidence, 0)} />
+          <Stat label="경제심리"     value={fmtNum(e.economicSentimentIndex, 0)} />
         </div>
       </Panel>
     </>
   );
 }
 
-// ============== 사회 ==============
+// ============ 사회 ============
 function SocialTab() {
   const s = useGame(st => st.state!.social);
   return (
     <>
       <Panel title="인구">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-          <Stat label="총 인구" value={`${fmtInt(s.totalPopulation)}만명`} />
-          <Stat label="인구증감 YoY" value={fmtPct(s.populationGrowth, 2)} color={s.populationGrowth >= 0 ? 'text-emerald-400' : 'text-red-400'} />
-          <Stat label="합계출산율" value={fmtNum(s.birthRate, 2)} color={s.birthRate >= 1.0 ? 'text-emerald-400' : 'text-red-400'} />
-          <Stat label="조사망률" value={`${fmtNum(s.deathRate, 1)}‰`} />
-          <Stat label="혼인율" value={`${fmtNum(s.marriageRate, 1)}‰`} />
-          <Stat label="이혼율" value={`${fmtNum(s.divorceRate, 1)}‰`} />
-          <Stat label="노령화지수" value={fmtNum(s.agingIndex, 1)} />
-          <Stat label="중위연령" value={`${fmtNum(s.medianAge, 1)}세`} />
-          <Stat label="외국인" value={`${fmtInt(s.immigrantPopulation)}만명`} />
+          <Stat label="총 인구"      value={`${fmtInt(s.totalPopulation)}만`} />
+          <Stat label="인구증감"     value={fmtPct(s.populationGrowth, 2)} color={s.populationGrowth >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+          <Stat label="합계출산율"   value={fmtNum(s.birthRate, 2)} />
+          <Stat label="조사망률"     value={`${fmtNum(s.deathRate, 1)}‰`} />
+          <Stat label="혼인율"       value={`${fmtNum(s.marriageRate, 1)}‰`} />
+          <Stat label="이혼율"       value={`${fmtNum(s.divorceRate, 1)}‰`} />
+          <Stat label="노령화지수"   value={fmtNum(s.agingIndex, 1)} />
+          <Stat label="중위연령"     value={`${fmtNum(s.medianAge, 1)}세`} />
+          <Stat label="외국인"       value={`${fmtInt(s.immigrantPopulation)}만`} />
+          <Stat label="다문화 가구"  value={`${fmtNum(s.multiculturalFamilies, 1)}만`} />
         </div>
       </Panel>
-      <Panel title="안전·건강">
+      <Panel title="안전 / 건강">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
           <Stat label="자살률" value={`${fmtNum(s.suicideRate, 1)}/10만`} />
-          <Stat label="강력범죄" value={`${fmtNum(s.violentCrimeRate, 1)}/10만`} />
+          <Stat label="강력범죄율" value={`${fmtNum(s.violentCrimeRate, 1)}/10만`} />
           <Stat label="범죄지수" value={fmtNum(s.crimeIndex, 0)} />
-          <Stat label="교통사망(누계)" value={fmtInt(s.trafficDeaths)} />
-          <Stat label="마약범죄(누계)" value={fmtInt(s.drugCrimeCount)} />
-          <Stat label="PM2.5" value={`${fmtNum(s.airQualityPM25, 0)}㎍`} />
+          <Stat label="교통사망" value={fmtInt(s.trafficDeaths)} />
+          <Stat label="마약범죄" value={fmtInt(s.drugCrimeCount)} />
+          <Stat label="사이버범죄" value={fmtInt(s.cyberCrimeCount)} />
+          <Stat label="PM2.5"   value={`${fmtNum(s.airQualityPM25, 0)}㎍`} />
+          <Stat label="PM10"    value={`${fmtNum(s.airQualityPM10, 0)}㎍`} />
         </div>
       </Panel>
       <Panel title="만족도 / 신뢰">
-        <StatBar label="의료 만족도"   value={s.healthcareSatisfaction}    valueLabel={fmtPct(s.healthcareSatisfaction, 0)} />
-        <StatBar label="교육 만족도"   value={s.educationSatisfaction}     valueLabel={fmtPct(s.educationSatisfaction, 0)} />
-        <StatBar label="연금 신뢰도"   value={s.pensionTrust}              valueLabel={fmtPct(s.pensionTrust, 0)} />
-        <StatBar label="치안 만족도"   value={s.publicSafetySatisfaction}  valueLabel={fmtPct(s.publicSafetySatisfaction, 0)} />
-        <StatBar label="정부 신뢰도"   value={s.governmentTrust}           valueLabel={fmtPct(s.governmentTrust, 0)} />
+        <StatBar label="의료 만족도"      value={s.healthcareSatisfaction}     valueLabel={fmtPct(s.healthcareSatisfaction, 0)} />
+        <StatBar label="교육 만족도"      value={s.educationSatisfaction}      valueLabel={fmtPct(s.educationSatisfaction, 0)} />
+        <StatBar label="연금 신뢰도"      value={s.pensionTrust}               valueLabel={fmtPct(s.pensionTrust, 0)} />
+        <StatBar label="치안 만족도"      value={s.publicSafetySatisfaction}   valueLabel={fmtPct(s.publicSafetySatisfaction, 0)} />
+        <StatBar label="정부 신뢰도"      value={s.governmentTrust}            valueLabel={fmtPct(s.governmentTrust, 0)} />
+        <StatBar label="사법부 신뢰"      value={s.judicialTrust}              valueLabel={fmtPct(s.judicialTrust, 0)} />
+        <StatBar label="대통령실 신뢰"    value={s.presidentialOfficeTrust}    valueLabel={fmtPct(s.presidentialOfficeTrust, 0)} />
+        <StatBar label="국회 신뢰"        value={s.parliamentTrust}            valueLabel={fmtPct(s.parliamentTrust, 0)} />
       </Panel>
       <Panel title="사회 갈등">
-        <StatBar label="젠더 갈등"   value={s.genderConflictIndex}     valueLabel={fmtNum(s.genderConflictIndex, 0)} inverted />
-        <StatBar label="세대 갈등"   value={s.generationConflictIndex} valueLabel={fmtNum(s.generationConflictIndex, 0)} inverted />
-        <StatBar label="지역 갈등"   value={s.regionalConflictIndex}   valueLabel={fmtNum(s.regionalConflictIndex, 0)} inverted />
-        <StatBar label="계층 갈등"   value={s.classConflictIndex}      valueLabel={fmtNum(s.classConflictIndex, 0)} inverted />
-        <div className="mt-2 text-[10px] text-slate-500">이민 수용 정서 ({s.immigrationSentiment > 0 ? '+' : ''}{s.immigrationSentiment})</div>
-        <div className="bar-bg h-1.5 relative">
-          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-600" />
-          <div className={`bar-fill ${s.immigrationSentiment >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}
-            style={{ width: `${Math.abs(s.immigrationSentiment) / 2}%`,
-              marginLeft: s.immigrationSentiment >= 0 ? '50%' : `${50 - Math.abs(s.immigrationSentiment) / 2}%` }} />
-        </div>
+        <StatBar label="젠더 갈등" value={s.genderConflictIndex}     valueLabel={fmtNum(s.genderConflictIndex, 0)} inverted />
+        <StatBar label="세대 갈등" value={s.generationConflictIndex} valueLabel={fmtNum(s.generationConflictIndex, 0)} inverted />
+        <StatBar label="지역 갈등" value={s.regionalConflictIndex}   valueLabel={fmtNum(s.regionalConflictIndex, 0)} inverted />
+        <StatBar label="계층 갈등" value={s.classConflictIndex}      valueLabel={fmtNum(s.classConflictIndex, 0)} inverted />
       </Panel>
       <Panel title="국제 비교">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
           <Stat label="언론자유 (RSF)" value={fmtNum(s.pressFreedomIndex, 1)} sub="↓좋음" />
           <Stat label="부패인식 (CPI)" value={fmtInt(s.corruptionPerceptionIndex)} sub="↑좋음" />
           <Stat label="민주주의 (EIU)" value={fmtNum(s.democracyIndex, 2)} />
-          <Stat label="지니계수" value={fmtNum(s.giniIndex, 3)} />
-          <Stat label="상대빈곤율" value={fmtPct(s.povertyRate)} />
+          <Stat label="지니계수"        value={fmtNum(s.giniIndex, 3)} />
+          <Stat label="상대빈곤율"      value={fmtPct(s.povertyRate)} />
         </div>
       </Panel>
-      <Panel title="환경·에너지">
+      <Panel title="환경 / 에너지">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-          <Stat label="탄소배출량" value={`${fmtInt(s.carbonEmission)}백만톤`} />
-          <Stat label="재생에너지 비중" value={fmtPct(s.greenEnergyShare)} />
+          <Stat label="탄소배출량"    value={`${fmtInt(s.carbonEmission)}백만톤`} />
+          <Stat label="재생E 비중"    value={fmtPct(s.greenEnergyShare)} />
+          <Stat label="에너지자급"    value={fmtPct(s.energySelfSufficiency)} />
+          <Stat label="식량자급"      value={fmtPct(s.foodSelfSufficiency)} />
         </div>
       </Panel>
-      <Panel title="교육·주거">
+      <Panel title="교육 / 주거 / 디지털">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-          <Stat label="대학진학률" value={fmtPct(s.collegeAdmissionRate)} />
-          <Stat label="사교육비/연" value={`${fmtNum(s.privateEduSpending, 1)}조`} />
-          <Stat label="주거 취약도" value={fmtNum(s.housingAffordability, 0)} />
+          <Stat label="대학진학률"    value={fmtPct(s.collegeAdmissionRate)} />
+          <Stat label="사교육비/연"   value={`₩${fmtNum(s.privateEduSpending, 1)}조`} />
+          <Stat label="주거 취약도"   value={fmtNum(s.housingAffordability, 0)} />
+          <Stat label="자가보유율"    value={fmtPct(s.homeOwnershipRate)} />
+          <Stat label="인터넷 보급"   value={fmtPct(s.internetPenetration)} />
+          <Stat label="스마트폰 보급" value={fmtPct(s.smartphonePenetration)} />
         </div>
       </Panel>
     </>
   );
 }
 
-// ============== 군사 ==============
+// ============ 군사 ============
 function MilitaryTab() {
-  const s = useGame(st => st.state!.security);
-  const defconColor = s.defconLevel <= 2 ? 'text-red-400' : s.defconLevel <= 3 ? 'text-orange-400' : 'text-emerald-400';
+  const sec = useGame(s => s.state!.security);
+  const addWeapon = useGame(s => s.addWeapon);
+  const removeWeapon = useGame(s => s.removeWeapon);
+  const changeWeaponCount = useGame(s => s.changeWeaponCount);
+  const [section, setSection] = useState<'STATUS' | 'WEAPONS' | 'BASES' | 'UNITS' | 'PROCURE'>('STATUS');
+  const [newW, setNewW] = useState<{ category: WeaponEntry['category']; name: string; count: number; origin: string }>({
+    category: '전투기', name: '', count: 1, origin: '미국',
+  });
+  const defconColor = sec.defconLevel <= 2 ? 'text-red-400' : sec.defconLevel <= 3 ? 'text-orange-400' : 'text-emerald-400';
+
+  const weaponsByCat: Record<string, typeof sec.weapons> = {};
+  for (const w of sec.weapons) (weaponsByCat[w.category] ??= []).push(w);
+  const unitsByEchelon: Record<string, typeof sec.units> = {};
+  for (const u of sec.units) (unitsByEchelon[u.echelon] ??= []).push(u);
+  const basesByType: Record<string, typeof sec.bases> = {};
+  for (const b of sec.bases) (basesByType[b.type] ??= []).push(b);
+
   return (
     <>
-      <Panel title="비상 태세">
-        <div className="grid grid-cols-2 gap-2">
-          <div className="bg-slate-950/60 rounded p-2 border border-slate-800 text-center">
-            <div className="text-[10px] text-slate-400">DEFCON</div>
-            <div className={`text-3xl font-bold ${defconColor}`}>{s.defconLevel}</div>
-            <div className="text-[10px] text-slate-500">
-              {s.defconLevel === 5 ? '평시' : s.defconLevel === 4 ? '주의' : s.defconLevel === 3 ? '경계' : s.defconLevel === 2 ? '준전시' : '전쟁임박'}
+      <div className="flex gap-1">
+        {(['STATUS','WEAPONS','BASES','UNITS','PROCURE'] as const).map(t => (
+          <button key={t} onClick={() => setSection(t)}
+            className={`text-[10px] px-2 py-1 rounded ${section === t ? 'bg-rok-blue text-white' : 'bg-slate-800 text-slate-300'}`}>
+            {t === 'STATUS' ? '태세' : t === 'WEAPONS' ? '무기' : t === 'BASES' ? '기지' : t === 'UNITS' ? '부대' : '도입/폐기'}
+          </button>
+        ))}
+      </div>
+
+      {section === 'STATUS' && (
+        <>
+          <Panel title="비상 태세">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-slate-950/60 rounded p-2 border border-slate-800 text-center">
+                <div className="text-[10px] text-slate-400">DEFCON</div>
+                <div className={`text-3xl font-bold ${defconColor}`}>{sec.defconLevel}</div>
+                <div className="text-[10px] text-slate-500">
+                  {sec.defconLevel === 5 ? '평시' : sec.defconLevel === 4 ? '주의' : sec.defconLevel === 3 ? '경계' : sec.defconLevel === 2 ? '준전시' : '전쟁임박'}
+                </div>
+              </div>
+              <div className="bg-slate-950/60 rounded p-2 border border-slate-800 text-center">
+                <div className="text-[10px] text-slate-400">WATCHCON</div>
+                <div className="text-3xl font-bold text-orange-300">{sec.watchcon}</div>
+              </div>
             </div>
+          </Panel>
+          <Panel title="위협도">
+            <StatBar label="북한 긴장도"    value={sec.northKoreaTension}         valueLabel={fmtPct(sec.northKoreaTension, 0)} inverted />
+            <StatBar label="북한 도발 위험" value={sec.northKoreaProvocationRisk} valueLabel={fmtPct(sec.northKoreaProvocationRisk, 0)} inverted />
+            <StatBar label="사이버 위협"    value={sec.cyberThreatLevel}          valueLabel={fmtPct(sec.cyberThreatLevel, 0)} inverted />
+            <StatBar label="테러 위협"      value={sec.terrorThreatLevel}         valueLabel={fmtPct(sec.terrorThreatLevel, 0)} inverted />
+          </Panel>
+          <Panel title="국군 전력 / 동맹">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <Stat label="현역"      value={`${sec.troopsActive}만명`} />
+              <Stat label="예비역"    value={`${sec.troopsReserve}만명`} />
+              <Stat label="국방예산"  value={`₩${fmtNum(sec.defenseBudget, 1)}조`} />
+              <Stat label="국방비/GDP" value={fmtPct(sec.defenseBudgetPctGdp)} />
+              <Stat label="GFP 순위"  value={`세계 ${sec.globalFireRank}위`} />
+              <Stat label="군 준비태세" value={`${sec.rokMilitaryReadiness}/100`} />
+              <Stat label="한미동맹"   value={`${sec.usAllianceStrength}/100`} />
+              <Stat label="주한미군"   value={`${fmtInt(sec.usftKorea)}명`} />
+              <Stat label="핵보유"     value={sec.nukesAvailable ? '예' : '없음'} color={sec.nukesAvailable ? 'text-red-400' : ''} />
+              <Stat label="北 핵 추정" value={`${sec.northKoreaNukes}기`} color="text-red-400" />
+              <Stat label="北 미사일/연" value={`${sec.northKoreaMissilesYear}회`} />
+            </div>
+          </Panel>
+        </>
+      )}
+
+      {section === 'WEAPONS' && (
+        <Panel title={`무기 인벤토리 (${sec.weapons.length}종)`}>
+          {Object.entries(weaponsByCat).map(([cat, items]) => (
+            <div key={cat} className="mb-2">
+              <div className="text-[10px] text-slate-500 mb-0.5 sticky top-0 bg-slate-900/80 backdrop-blur-sm">{cat} ({items.length}종)</div>
+              <div className="space-y-1">
+                {items.map(w => (
+                  <div key={w.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-slate-200">{w.name}</div>
+                        <div className="text-[10px] text-slate-500">{w.origin} · {w.status}{w.notes ? ` · ${w.notes}` : ''}</div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => changeWeaponCount(w.id, -10)} className="text-[10px] px-1 bg-red-900/50 rounded">-10</button>
+                        <button onClick={() => changeWeaponCount(w.id, -1)} className="text-[10px] px-1 bg-red-900/50 rounded">-1</button>
+                        <span className="font-mono w-12 text-center">{fmtInt(w.count)}</span>
+                        <button onClick={() => changeWeaponCount(w.id, 1)} className="text-[10px] px-1 bg-emerald-900/50 rounded">+1</button>
+                        <button onClick={() => changeWeaponCount(w.id, 10)} className="text-[10px] px-1 bg-emerald-900/50 rounded">+10</button>
+                        <button onClick={() => removeWeapon(w.id)} className="text-[10px] text-red-400 ml-1">×</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </Panel>
+      )}
+
+      {section === 'PROCURE' && (
+        <Panel title="신규 도입 / 폐기">
+          <div className="space-y-1.5">
+            <div>
+              <label className="block text-[10px] text-slate-400 mb-0.5">분류</label>
+              <select className="input w-full text-xs" value={newW.category}
+                onChange={e => setNewW({ ...newW, category: e.target.value as any })}>
+                {['전차','장갑차','자주포','견인포','다연장','전투기','공격기','수송기','헬기','구축함','잠수함','호위함','미사일','방공','레이더','드론','기타'].map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] text-slate-400 mb-0.5">명칭</label>
+              <input className="input w-full text-xs" placeholder="예: KF-21 보라매 추가분"
+                value={newW.name} onChange={e => setNewW({ ...newW, name: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-0.5">수량</label>
+                <input className="input w-full text-xs" type="number" value={newW.count}
+                  onChange={e => setNewW({ ...newW, count: Number(e.target.value) })} />
+              </div>
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-0.5">원산지</label>
+                <input className="input w-full text-xs" value={newW.origin}
+                  onChange={e => setNewW({ ...newW, origin: e.target.value })} />
+              </div>
+            </div>
+            <button onClick={() => {
+              if (!newW.name) return alert('명칭 필요');
+              addWeapon({ ...newW, status: '도입중' as any, notes: '신규 도입' });
+              setNewW({ ...newW, name: '', count: 1 });
+            }} className="btn-primary w-full text-xs">+ 도입 명령</button>
           </div>
-          <div className="bg-slate-950/60 rounded p-2 border border-slate-800 text-center">
-            <div className="text-[10px] text-slate-400">WATCHCON (대북정보)</div>
-            <div className="text-3xl font-bold text-orange-300">{s.watchcon}</div>
-          </div>
-        </div>
-      </Panel>
-      <Panel title="위협도">
-        <StatBar label="북한 긴장도"        value={s.northKoreaTension}         valueLabel={fmtPct(s.northKoreaTension, 0)} inverted />
-        <StatBar label="북한 도발 위험"     value={s.northKoreaProvocationRisk} valueLabel={fmtPct(s.northKoreaProvocationRisk, 0)} inverted />
-        <StatBar label="사이버 위협"        value={s.cyberThreatLevel}          valueLabel={fmtPct(s.cyberThreatLevel, 0)} inverted />
-        <StatBar label="테러 위협"          value={s.terrorThreatLevel}         valueLabel={fmtPct(s.terrorThreatLevel, 0)} inverted />
-      </Panel>
-      <Panel title="국군 전력">
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-          <Stat label="현역" value={`${s.troopsActive}만명`} />
-          <Stat label="예비역" value={`${s.troopsReserve}만명`} />
-          <Stat label="국방예산" value={`${fmtNum(s.defenseBudget, 1)}조`} />
-          <Stat label="국방비/GDP" value={fmtPct(s.defenseBudgetPctGdp)} />
-          <Stat label="GFP 순위" value={`세계 ${s.globalFireRank}위`} />
-          <Stat label="군 준비태세" value={`${s.rokMilitaryReadiness}/100`} />
-        </div>
-        <div className="mt-2 text-[10px] text-slate-500 mb-1">주요 장비</div>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-          <Stat label="전차" value={fmtInt(s.tanks)} />
-          <Stat label="항공기" value={fmtInt(s.aircraft)} />
-          <Stat label="함정" value={fmtInt(s.warships)} />
-          <Stat label="잠수함" value={fmtInt(s.submarines)} />
-          <Stat label="탄도미사일" value={fmtInt(s.missilesBallistic)} />
-          <Stat label="핵보유" value={s.nukesAvailable ? '예' : '없음'} color={s.nukesAvailable ? 'text-red-400' : ''} />
-        </div>
-      </Panel>
-      <Panel title="동맹·연합">
-        <Stat label="한미동맹 결속도" value={`${s.usAllianceStrength}/100`} />
-        <Stat label="주한미군" value={`${fmtInt(s.usftKorea)}명`} />
-        <Stat label="NATO 파트너십" value={`${s.natoPartnership}/100`} />
-      </Panel>
-      <Panel title="북한 군사력 (추정)">
-        <Stat label="핵탄두 추정" value={`${s.northKoreaNukes}기`} color="text-red-400" />
-        <Stat label="올해 미사일 발사" value={`${s.northKoreaMissilesYear}회`} />
-        <div className="text-[10px] text-slate-500 mt-2">
-          ※ 김정은 "대남 적대 2국가" 노선 고착. 북러 군사협력 심화로 ICBM 기술 진전 우려.
-        </div>
-      </Panel>
+        </Panel>
+      )}
+
+      {section === 'BASES' && (
+        <Panel title={`군사기지 (${sec.bases.length}개)`}>
+          {Object.entries(basesByType).map(([type, items]) => (
+            <div key={type} className="mb-2">
+              <div className="text-[10px] text-slate-500 mb-0.5">{type} ({items.length})</div>
+              <div className="space-y-1">
+                {items.map(b => (
+                  <div key={b.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-200">{b.name}</span>
+                      <span className="text-[10px] text-slate-500">{b.personnel ? fmtInt(b.personnel) + '명' : ''}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500">{b.location}</div>
+                    {b.desc && <div className="text-[10px] text-slate-400">{b.desc}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </Panel>
+      )}
+
+      {section === 'UNITS' && (
+        <Panel title={`부대 편제 (${sec.units.length}개)`}>
+          {['군','군단','사단','여단','함대','비행단','특임','예비'].map(ec => {
+            const items = unitsByEchelon[ec] ?? [];
+            if (items.length === 0) return null;
+            return (
+              <div key={ec} className="mb-2">
+                <div className="text-[10px] text-slate-500 mb-0.5">{ec} ({items.length})</div>
+                <div className="space-y-1">
+                  {items.map(u => (
+                    <div key={u.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-200">{u.name}</span>
+                        <span className="text-[10px] text-slate-500">{u.service}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500">{u.hq} {u.personnel ? `· ${fmtInt(u.personnel)}명` : ''}{u.notes ? ` · ${u.notes}` : ''}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </Panel>
+      )}
     </>
   );
 }
 
-// ============== 외교 ==============
+// ============ 외교 (200개국) ============
 function DiplomacyTab() {
-  const foreign = useGame(s => s.state!.foreign);
-  const [pickedId, setPicked] = useState<CountryId | null>(null);
-  const picked = foreign.find(f => f.id === pickedId);
-  const allianceColor = (a: string) => ({
+  const countries = useGame(s => s.state!.countries);
+  const [continent, setContinent] = useState<Continent | 'ALL'>('ALL');
+  const [filter, setFilter] = useState('');
+  const [pickedId, setPicked] = useState<string | null>(null);
+  const picked = countries.find(c => c.id === pickedId);
+
+  const list = countries
+    .filter(c => continent === 'ALL' || c.continent === continent)
+    .filter(c => !filter || c.name.includes(filter) || c.leader.includes(filter));
+
+  const allianceLabel = (a: AllianceStatus) => ({ ALLY: '동맹', PARTNER: '파트너', NEUTRAL: '중립', RIVAL: '경쟁', HOSTILE: '적대' } as any)[a];
+  const allianceColor = (a: AllianceStatus) => ({
     ALLY: 'text-blue-300', PARTNER: 'text-emerald-300', NEUTRAL: 'text-slate-300',
     RIVAL: 'text-orange-300', HOSTILE: 'text-red-300',
   } as any)[a];
-  const allianceLabel = (a: string) => ({ ALLY: '동맹', PARTNER: '파트너', NEUTRAL: '중립', RIVAL: '경쟁', HOSTILE: '적대' } as any)[a];
+
   return (
     <>
-      <Panel title="국가 관계 (클릭하여 상세)">
+      <Panel title={`수교국 (${list.length}/${countries.length})`}>
+        <div className="flex gap-1 flex-wrap mb-2">
+          <button onClick={() => setContinent('ALL')} className={`text-[10px] px-1.5 py-0.5 rounded ${continent === 'ALL' ? 'bg-blue-700' : 'bg-slate-800'}`}>전체</button>
+          {(['ASIA','EUROPE','ME','NA','SA','OCEANIA','AFRICA'] as Continent[]).map(c => (
+            <button key={c} onClick={() => setContinent(c)} className={`text-[10px] px-1.5 py-0.5 rounded ${continent === c ? 'bg-blue-700' : 'bg-slate-800'}`}>{CONTINENT_NAME[c]}</button>
+          ))}
+        </div>
+        <input className="input w-full text-xs mb-2" placeholder="국가명·지도자 검색"
+          value={filter} onChange={e => setFilter(e.target.value)} />
         <div className="grid grid-cols-2 gap-1">
-          {foreign.map(f => (
+          {list.map(f => (
             <button key={f.id} onClick={() => setPicked(f.id)}
               className={`text-left bg-slate-950/40 border rounded p-1.5 hover:border-blue-500 ${pickedId === f.id ? 'border-blue-500' : 'border-slate-800'}`}>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold">{f.flag} {f.name}</span>
+                <span className="text-xs font-semibold truncate">{f.flag} {f.name}</span>
                 <span className={`text-[10px] ${f.relation >= 0 ? 'text-emerald-300' : 'text-red-300'} font-mono`}>{f.relation > 0 ? '+' : ''}{f.relation}</span>
               </div>
-              <div className="text-[10px] text-slate-500">{f.leader} · <span className={allianceColor(f.alliance)}>{allianceLabel(f.alliance)}</span></div>
+              <div className="text-[10px] text-slate-500 truncate">{f.leader} · <span className={allianceColor(f.alliance)}>{allianceLabel(f.alliance)}</span></div>
               <div className="bar-bg h-1 mt-1 relative">
                 <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-600" />
                 <div className={`bar-fill ${f.relation >= 50 ? 'bg-emerald-500' : f.relation >= 0 ? 'bg-lime-500' : f.relation >= -40 ? 'bg-orange-500' : 'bg-red-500'}`}
@@ -405,42 +568,46 @@ function DiplomacyTab() {
           ))}
         </div>
       </Panel>
+
       {picked && (
         <Panel title={`${picked.flag} ${picked.name} 상세`}>
           <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
-            <Stat label="현지명" value={picked.nameLocal ?? '-'} />
-            <Stat label="수도"   value={picked.capital} />
-            <Stat label="정상"   value={`${picked.leader} (${picked.leaderTitle})`} />
-            <Stat label="인구"   value={`${fmtInt(picked.population)}만`} />
-            <Stat label="GDP"    value={`$${fmtNum(picked.gdp, 1)}조`} />
-            {picked.militaryRank && <Stat label="군사력 (GFP)" value={`${picked.militaryRank}위`} />}
-            <Stat label="핵보유" value={picked.nuclear ? '예' : '아니오'} color={picked.nuclear ? 'text-red-400' : ''} />
+            <Stat label="현지명"    value={picked.nameLocal ?? '-'} />
+            <Stat label="대륙"      value={CONTINENT_NAME[picked.continent]} />
+            <Stat label="수도"      value={picked.capital} />
+            <Stat label="정상"      value={picked.leader} />
+            <Stat label="직위"      value={picked.leaderTitle} />
+            <Stat label="정부형태"  value={picked.government} />
+            <Stat label="인구"      value={`${fmtInt(picked.population)}만`} />
+            <Stat label="면적"      value={`${fmtInt(picked.area / 1000)}천㎢`} />
+            <Stat label="GDP"       value={`$${fmtNum(picked.gdpUSD, 1)}B`} />
+            <Stat label="1인 GDP"   value={`$${fmtInt(picked.gdpPerCapita)}`} />
+            <Stat label="핵보유"    value={picked.nuclear ? '예' : '아니오'} color={picked.nuclear ? 'text-red-400' : ''} />
             <Stat label="UNSC 상임" value={picked.unscPermanent ? '예' : '아니오'} />
-            <Stat label="동맹지위" value={<span className={allianceColor(picked.alliance)}>{allianceLabel(picked.alliance)}</span>} />
-            <Stat label="FTA"     value={picked.hasFTA ? '체결' : '없음'} />
-            <Stat label="무비자"  value={picked.visaFreeKorean ? '가능' : '불가'} />
-            <Stat label="교민"    value={`${fmtNum(picked.koreanResidents, 1)}만`} />
-            <Stat label="교역"    value={`${fmtInt(picked.tradeVolume)}억$`} />
-            <Stat label="대韓수출" value={`${fmtInt(picked.exportTo)}억$`} />
-            <Stat label="대韓수입" value={`${fmtInt(picked.importFrom)}억$`} />
-            <Stat label="관계점수" value={`${picked.relation > 0 ? '+' : ''}${picked.relation}`} />
-            <Stat label="신뢰도"   value={`${picked.trustLevel}/100`} />
+            <Stat label="대사관"    value={picked.hasEmbassyInCountry ? '주재' : '미설치'} />
+            <Stat label="동맹지위"  value={<span className={allianceColor(picked.alliance)}>{allianceLabel(picked.alliance)}</span>} />
+            <Stat label="FTA"       value={picked.hasFTA ? '체결' : '없음'} />
+            <Stat label="무비자"    value={picked.visaFreeKorean ? '가능' : '불가'} />
+            <Stat label="교민"      value={`${fmtInt(picked.koreanResidents)}명`} />
+            <Stat label="교역"      value={`$${fmtInt(picked.tradeVolumeUSD)}억`} />
+            <Stat label="관계점수"  value={`${picked.relation > 0 ? '+' : ''}${picked.relation}`} />
+            <Stat label="신뢰도"    value={`${picked.trustLevel}/100`} />
           </div>
-          <div className="mt-2 text-[10px] text-slate-500">조약·협정</div>
-          <div className="flex flex-wrap gap-1 mt-0.5">
-            {picked.treaties.map((t, i) => <Chip key={i}>{t}</Chip>)}
-          </div>
-          <div className="mt-2 text-[10px] text-slate-500">최근 이슈</div>
-          <ul className="text-[11px] text-slate-300 mt-0.5 space-y-0.5">
-            {picked.recentEvents.map((r, i) => <li key={i}>· {r}</li>)}
-          </ul>
+          {picked.treaties.length > 0 && (<>
+            <div className="mt-2 text-[10px] text-slate-500">조약·협정</div>
+            <div className="flex flex-wrap gap-1 mt-0.5">{picked.treaties.map((t, i) => <Chip key={i}>{t}</Chip>)}</div>
+          </>)}
+          {picked.recentEvents.length > 0 && (<>
+            <div className="mt-2 text-[10px] text-slate-500">최근 이슈</div>
+            <ul className="text-[11px] text-slate-300 mt-0.5 space-y-0.5">{picked.recentEvents.map((r, i) => <li key={i}>· {r}</li>)}</ul>
+          </>)}
         </Panel>
       )}
     </>
   );
 }
 
-// ============== 정치 (정당, 대선/총선, 여론) ==============
+// ============ 정치 ============
 function PoliticsTab() {
   const state = useGame(s => s.state)!;
   const { parties, assembly, president, approval } = state;
@@ -464,17 +631,6 @@ function PoliticsTab() {
                 <span>지지율: <span className="text-slate-200">{p.supportRate}%</span></span>
               </div>
               <div className="text-[10px] text-slate-500 mt-1">{p.description}</div>
-              <div className="mt-1 bar-bg h-1 relative">
-                <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-600" />
-                <div className={`bar-fill ${p.ideology < 0 ? 'bg-blue-500' : 'bg-red-500'}`}
-                  style={{ width: `${Math.abs(p.ideology) / 2}%`,
-                    marginLeft: p.ideology < 0 ? `${50 - Math.abs(p.ideology) / 2}%` : '50%' }} />
-              </div>
-              <div className="flex justify-between text-[9px] text-slate-500 mt-0.5">
-                <span>진보 ←</span>
-                <span>이념 {p.ideology > 0 ? '+' : ''}{p.ideology}</span>
-                <span>→ 보수</span>
-              </div>
             </div>
           ))}
         </div>
@@ -487,13 +643,8 @@ function PoliticsTab() {
             return <div key={p.id} style={{ width: `${(s / 300) * 100}%`, background: p.color }} title={`${p.name} ${s}석`} />;
           })}
         </div>
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <div><div className="text-[10px] text-slate-500">여당</div><div className="font-mono text-blue-300">{assembly.rulingCoalitionSeats}석</div></div>
-          <div className="text-center"><div className="text-[10px] text-slate-500">의결정족수</div><div className="font-mono">151</div></div>
-          <div className="text-right"><div className="text-[10px] text-slate-500">야권</div><div className="font-mono text-red-300">{assembly.oppositionSeats}석</div></div>
-        </div>
         {assembly.rulingCoalitionSeats < 151 && (
-          <div className="mt-2 text-[10px] text-orange-400 bg-orange-950/30 border border-orange-900 rounded px-2 py-1">
+          <div className="text-[10px] text-orange-400 bg-orange-950/30 border border-orange-900 rounded px-2 py-1">
             ⚠ 여소야대 — 정부 법안 통과에 야당 협조 필수
           </div>
         )}
@@ -518,69 +669,153 @@ function PoliticsTab() {
   );
 }
 
-// ============== 행정부 ==============
-function CabinetTab() {
+// ============ 행정부 (부처/처/위원회/청 + 인선 + 업무) ============
+function AdminTab() {
   const state = useGame(s => s.state)!;
-  const patch = useGame(s => s.patch);
-  const [filter, setFilter] = useState('');
-  const cab = state.cabinet.filter(o => o.name.includes(filter) || o.ministryName.includes(filter));
-  const replace = (id: string) => {
-    patch(s => ({
-      ...s,
-      cabinet: s.cabinet.map(o => o.id === id ? {
-        ...o, id: genId('off'), name: randomKoreanName(),
-        loyalty: 60 + Math.floor(Math.random() * 35),
-        competence: 50 + Math.floor(Math.random() * 45),
-        publicFavor: 35 + Math.floor(Math.random() * 35),
-        scandalRisk: Math.floor(Math.random() * 20),
-        appointedAt: s.clock.currentDate,
-      } : o),
-    }));
-  };
-  const groups: Record<string, typeof state.cabinet> = {};
-  for (const o of cab) {
-    const cat = MINISTRY_CATEGORY[o.ministry] ?? '기타';
-    (groups[cat] ??= []).push(o);
-  }
+  const { adminBodies, cabinet, adminTasks } = state;
+  const appointOfficial = useGame(s => s.appointOfficial);
+  const appointCustom = useGame(s => s.appointCustom);
+  const resignOfficial = useGame(s => s.resignOfficial);
+  const completeAdminTask = useGame(s => s.completeAdminTask);
+  const [pickedBodyId, setPickedBody] = useState<MinistryId | null>(null);
+  const [customName, setCustomName] = useState('');
+  const [customBio, setCustomBio] = useState('');
+
+  const grouped: Record<string, typeof adminBodies> = {};
+  for (const b of adminBodies) (grouped[b.category] ??= []).push(b);
+
+  const officialOf = (mid: MinistryId) => cabinet.find(o => o.ministry === mid);
+  const tasksOf = (mid: MinistryId) => adminTasks.filter(t => t.bodyId === mid);
+
+  const picked = pickedBodyId ? adminBodies.find(b => b.id === pickedBodyId) : null;
+  const pickedOfficial = picked ? officialOf(picked.id) : null;
+  const pickedTasks = picked ? tasksOf(picked.id) : [];
+  const pickedNeedsConfirm = picked && CONFIRMATION_REQUIRED.includes(picked.id);
+  const pickedCandidates = picked ? (NOMINEE_POOL as any)[picked.id] ?? [] : [];
+
+  const vacantCount = cabinet.filter(o => !o.confirmed && CONFIRMATION_REQUIRED.includes(o.ministry)).length;
+
   return (
     <>
-      <Panel title={`행정부 인사 (${state.cabinet.length}명)`} right={
-        <input className="input text-[10px] py-0.5 px-1.5 w-24" placeholder="검색" value={filter} onChange={e => setFilter(e.target.value)} />
+      <Panel title={`행정 조직 (${adminBodies.length}개)`} right={
+        <span className="text-[10px] text-red-300">{vacantCount}개 공석</span>
       }>
         <div className="space-y-2">
-          {Object.entries(groups).map(([cat, items]) => (
-            <div key={cat}>
-              <div className="text-[10px] text-slate-500 mb-1">{cat}</div>
-              <div className="space-y-1">
-                {items.map(o => (
-                  <div key={o.id} className="bg-slate-950/40 border border-slate-800 rounded px-2 py-1.5 text-xs">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-semibold text-slate-200">{o.name} <span className="text-[10px] text-slate-500">({o.age}세)</span></div>
-                        <div className="text-[10px] text-slate-500">{o.ministryName} · {o.education}</div>
-                      </div>
-                      <button onClick={() => replace(o.id)} className="text-[10px] text-orange-400 hover:text-orange-300">교체</button>
-                    </div>
-                    <div className="grid grid-cols-4 gap-1 mt-1 text-[10px]">
-                      <div><span className="text-slate-500">충성</span> <span className="font-mono">{o.loyalty}</span></div>
-                      <div><span className="text-slate-500">능력</span> <span className="font-mono">{o.competence}</span></div>
-                      <div><span className="text-slate-500">여론</span> <span className="font-mono">{o.publicFavor}</span></div>
-                      <div className={o.scandalRisk > 50 ? 'text-red-400' : 'text-slate-500'}>
-                        <span>리스크</span> <span className="font-mono">{o.scandalRisk}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+          {(['대통령실','국무총리실','부','처','청','위원회','독립기관'] as const).map(cat => {
+            const items = grouped[cat] ?? [];
+            if (!items.length) return null;
+            return (
+              <div key={cat}>
+                <div className="text-[10px] text-slate-500 mb-1 sticky top-0 bg-slate-900/80 backdrop-blur-sm">{cat} ({items.length})</div>
+                <div className="space-y-1">
+                  {items.map(b => {
+                    const off = officialOf(b.id);
+                    const tasks = tasksOf(b.id);
+                    const isVacant = !off?.confirmed && CONFIRMATION_REQUIRED.includes(b.id);
+                    return (
+                      <button key={b.id} onClick={() => setPickedBody(b.id)}
+                        className={`w-full text-left bg-slate-950/40 border rounded p-1.5 text-xs hover:border-blue-500 ${pickedBodyId === b.id ? 'border-blue-500' : 'border-slate-800'}`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-slate-200">{b.name}</span>
+                            {b.parentId && <span className="text-[9px] text-slate-500 ml-1">({adminBodies.find(x => x.id === b.parentId)?.name})</span>}
+                          </div>
+                          {isVacant
+                            ? <span className="text-[9px] text-red-400">공석</span>
+                            : <span className="text-[9px] text-slate-500">{off?.name}</span>}
+                        </div>
+                        {tasks.length > 0 && (
+                          <div className="text-[9px] text-slate-500 mt-0.5">진행 {tasks.length}건 · 평균 {Math.round(tasks.reduce((a, t) => a + t.progress, 0) / tasks.length)}%</div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Panel>
+
+      {picked && (
+        <Panel title={`${picked.name} 상세`}>
+          {pickedOfficial?.confirmed ? (
+            <div className="space-y-1">
+              <Stat label="현 책임자"   value={`${pickedOfficial.name} (${pickedOfficial.age}세)`} />
+              <Stat label="소속"        value={state.parties.find(p => p.id === pickedOfficial.party)?.name ?? pickedOfficial.party} />
+              <Stat label="임명일"      value={pickedOfficial.appointedAt} />
+              <div className="text-[10px] text-slate-500">{pickedOfficial.bio}</div>
+              <div className="grid grid-cols-4 gap-1 mt-1 text-[10px]">
+                <div><span className="text-slate-500">충성</span> <span className="font-mono">{pickedOfficial.loyalty}</span></div>
+                <div><span className="text-slate-500">능력</span> <span className="font-mono">{pickedOfficial.competence}</span></div>
+                <div><span className="text-slate-500">여론</span> <span className="font-mono">{pickedOfficial.publicFavor}</span></div>
+                <div className={pickedOfficial.scandalRisk > 50 ? 'text-red-400' : 'text-slate-500'}>
+                  <span>리스크</span> <span className="font-mono">{pickedOfficial.scandalRisk}</span>
+                </div>
+              </div>
+              <button onClick={() => resignOfficial(picked.id)} className="btn-danger w-full text-[11px] mt-2">해임 / 사임 수리</button>
+            </div>
+          ) : pickedNeedsConfirm ? (
+            <div>
+              <div className="text-[11px] text-red-300 mb-2">⚠ 공석 — 지명 필요</div>
+              <div className="space-y-1">
+                {pickedCandidates.map((c: any, i: number) => (
+                  <button key={i} onClick={() => appointOfficial(picked.id, i)}
+                    className="w-full text-left bg-slate-950/40 border border-slate-700 hover:border-blue-500 rounded p-2 text-xs">
+                    <div className="flex justify-between">
+                      <span className="font-semibold">{c.name}</span>
+                      <span className="text-[9px] text-slate-400">충성{c.loyalty}/능력{c.competence}/리스크{c.risk}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">{c.bio}</div>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 pt-2 border-t border-slate-800">
+                <div className="text-[10px] text-slate-400 mb-1">직접 지명 (커스텀)</div>
+                <input className="input w-full text-xs mb-1" placeholder="이름" value={customName} onChange={e => setCustomName(e.target.value)} />
+                <input className="input w-full text-xs mb-1" placeholder="약력" value={customBio} onChange={e => setCustomBio(e.target.value)} />
+                <button onClick={() => {
+                  if (!customName) return;
+                  appointCustom(picked.id, customName, customBio || '대통령 직접 지명');
+                  setCustomName(''); setCustomBio('');
+                }} className="btn-primary w-full text-[11px]">+ 직접 지명</button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-[11px] text-slate-400">{pickedOfficial?.name ?? '-'}</div>
+          )}
+
+          <div className="mt-3 pt-2 border-t border-slate-800">
+            <div className="text-[10px] text-slate-500 mb-1">진행 중 업무 ({pickedTasks.length})</div>
+            {pickedTasks.length === 0 && <div className="text-[10px] text-slate-500">없음</div>}
+            <div className="space-y-1">
+              {pickedTasks.map(t => (
+                <div key={t.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-200">{t.title}</span>
+                    <Chip color={t.priority === 'CRITICAL' ? 'text-red-300 border-red-800 bg-red-900/30' :
+                                  t.priority === 'HIGH' ? 'text-orange-300 border-orange-800 bg-orange-900/30' :
+                                  'text-slate-300 border-slate-700 bg-slate-800'}>{t.priority}</Chip>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">{t.detail}</div>
+                  <div className="bar-bg h-1 mt-1">
+                    <div className="bar-fill bg-emerald-500" style={{ width: `${t.progress}%` }} />
+                  </div>
+                  <div className="flex justify-between text-[9px] text-slate-500 mt-0.5">
+                    <span>{t.status} · 진척 {t.progress.toFixed(1)}%</span>
+                    {t.status === 'PROGRESS' && <button onClick={() => completeAdminTask(t.id)} className="text-emerald-400">완료 처리</button>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Panel>
+      )}
     </>
   );
 }
 
-// ============== 국회 ==============
+// ============ 국회 ============
 function AssemblyTab() {
   const a = useGame(s => s.state!.assembly);
   const parties = useGame(s => s.state!.parties);
@@ -594,10 +829,10 @@ function AssemblyTab() {
             return <div key={p.id} style={{ width: `${(s / 300) * 100}%`, background: p.color }} title={`${p.name} ${s}석`} />;
           })}
         </div>
-        <Stat label="국회의장" value={`${a.speaker.name} (${a.speaker.party})`} />
+        <Stat label="국회의장"        value={`${a.speaker.name} (${a.speaker.party})`} />
         {a.deputySpeakers.map((d, i) => <Stat key={i} label={`부의장 ${i+1}`} value={`${d.name} (${d.party})`} />)}
-        <Stat label="여당 의석" value={`${a.rulingCoalitionSeats}/300`} />
-        <Stat label="탄핵소추 누계" value={`${a.impeachmentMotions}건`} />
+        <Stat label="여당 의석"       value={`${a.rulingCoalitionSeats}/300`} />
+        <Stat label="탄핵소추 누계"   value={`${a.impeachmentMotions}건`} />
         <Stat label="필리버스터 일수" value={`${a.filibusterDays}일`} />
       </Panel>
       <Panel title={`상임위원회 (${a.committees.length}개)`}>
@@ -620,14 +855,14 @@ function AssemblyTab() {
   );
 }
 
-// ============== 사법부 ==============
+// ============ 사법부 ============
 function JudiciaryTab() {
   const j = useGame(s => s.state!.judiciary);
   return (
     <>
       <Panel title="대법원">
         <Stat label="대법원장" value={j.supremeCourt.chiefJustice} />
-        <Stat label="대법관" value={`${j.supremeCourt.justices.length}명`} />
+        <Stat label="대법관"   value={`${j.supremeCourt.justices.length}명`} />
         <StatBar label="대국민 신뢰도" value={j.supremeCourt.publicTrust} valueLabel={`${j.supremeCourt.publicTrust}%`} />
         <details className="mt-2">
           <summary className="text-[11px] text-slate-400 cursor-pointer">대법관 명단 ▾</summary>
@@ -646,20 +881,9 @@ function JudiciaryTab() {
         </ul>
       </Panel>
       <Panel title="헌법재판소">
-        <Stat label="소장" value={j.constitutionalCourt.chief} />
-        <Stat label="재판관" value={`${j.constitutionalCourt.justices.length}명`} />
+        <Stat label="소장"     value={j.constitutionalCourt.chief} />
+        <Stat label="재판관"   value={`${j.constitutionalCourt.justices.length}명`} />
         <StatBar label="대국민 신뢰도" value={j.constitutionalCourt.publicTrust} valueLabel={`${j.constitutionalCourt.publicTrust}%`} />
-        <details className="mt-2">
-          <summary className="text-[11px] text-slate-400 cursor-pointer">재판관 명단 ▾</summary>
-          <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px] mt-1">
-            {j.constitutionalCourt.justices.map(jc => (
-              <div key={jc.name} className="flex justify-between">
-                <span>{jc.name}</span>
-                <span className={`text-[10px] ${jc.ideology < 0 ? 'text-blue-300' : 'text-red-300'}`}>{jc.appointedBy}</span>
-              </div>
-            ))}
-          </div>
-        </details>
         <div className="mt-2 text-[10px] text-slate-500">계류 사건</div>
         <ul className="text-[11px] text-slate-300 space-y-0.5">
           {j.constitutionalCourt.pendingCases.map((c, i) => <li key={i}>· {c}</li>)}
@@ -667,8 +891,8 @@ function JudiciaryTab() {
       </Panel>
       <Panel title="검찰">
         <Stat label="검찰총장" value={j.prosecution.prosecutorGeneral} />
-        <StatBar label="신뢰도" value={j.prosecution.publicTrust} valueLabel={`${j.prosecution.publicTrust}%`} />
-        <StatBar label="정치적 독립성" value={j.prosecution.independenceIndex} valueLabel={`${j.prosecution.independenceIndex}%`} />
+        <StatBar label="신뢰도"        value={j.prosecution.publicTrust}        valueLabel={`${j.prosecution.publicTrust}%`} />
+        <StatBar label="정치적 독립성" value={j.prosecution.independenceIndex}  valueLabel={`${j.prosecution.independenceIndex}%`} />
         <div className="mt-2 text-[10px] text-slate-500">진행 중인 주요 수사</div>
         <ul className="text-[11px] text-slate-300 space-y-0.5">
           {j.prosecution.activeMajorInvestigations.map((c, i) => <li key={i}>· {c}</li>)}
@@ -694,15 +918,211 @@ function JudiciaryTab() {
   );
 }
 
-// ============== 사건 로그 ==============
+// ============ 행정구역 ============
+function RegionsTab() {
+  const regions = useGame(s => s.state!.regions);
+  const approval = useGame(s => s.state!.approval);
+  const parties = useGame(s => s.state!.parties);
+  const buildings = useGame(s => s.state!.buildings);
+  const [pickedId, setPicked] = useState<RegionId | null>(null);
+  const picked = regions.find(r => r.id === pickedId);
+  return (
+    <>
+      <Panel title={`행정구역 (17개 광역단체)`}>
+        <div className="grid grid-cols-2 gap-1">
+          {regions.map(r => {
+            const p = parties.find(x => x.id === r.governorParty);
+            const ap = approval.byRegion[r.id];
+            return (
+              <button key={r.id} onClick={() => setPicked(r.id)}
+                className={`text-left bg-slate-950/40 border rounded p-1.5 hover:border-blue-500 ${pickedId === r.id ? 'border-blue-500' : 'border-slate-800'}`}>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-200">{r.name}</span>
+                  <span className="w-2 h-2 rounded" style={{ background: p?.color }} />
+                </div>
+                <div className="text-[10px] text-slate-500">{r.governor} · 지지 {Math.round(ap)}%</div>
+                <div className="text-[10px] text-slate-500">인구 {fmtInt(r.population)}만 · GRDP ₩{fmtInt(r.grdp)}조</div>
+              </button>
+            );
+          })}
+        </div>
+      </Panel>
+      {picked && (
+        <Panel title={`${picked.name} 상세`}>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
+            <Stat label="단체장"    value={`${picked.governor} (${parties.find(p => p.id === picked.governorParty)?.name})`} />
+            <Stat label="지지율"    value={`${Math.round(approval.byRegion[picked.id])}%`} />
+            <Stat label="인구"      value={`${fmtInt(picked.population)}만`} />
+            <Stat label="면적"      value={`${fmtInt(picked.area)}㎢`} />
+            <Stat label="GRDP"      value={`₩${fmtInt(picked.grdp)}조`} />
+            <Stat label="1인당 소득" value={`₩${fmtInt(picked.perCapitaIncome)}만`} />
+            <Stat label="시군구"    value={`${picked.subdivisions}개`} />
+            <Stat label="실업률"    value={fmtPct(picked.unemployment)} />
+            <Stat label="출산율"    value={fmtNum(picked.birthRate, 2)} />
+            <Stat label="고령화"    value={fmtPct(picked.agingRatio)} />
+            <Stat label="대학"      value={`${picked.universities}개`} />
+            <Stat label="병원"      value={`${picked.hospitals}개`} />
+          </div>
+          <div className="mt-2 space-y-1.5">
+            <div>
+              <div className="text-[10px] text-slate-500">주요 도시</div>
+              <div className="text-[11px] text-slate-300">{picked.notableCities.join(', ')}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-slate-500">주요 산업</div>
+              <div className="flex flex-wrap gap-1">{picked.industries.map(i => <Chip key={i}>{i}</Chip>)}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-slate-500">특산물</div>
+              <div className="text-[11px] text-slate-300">{picked.speciality.join(', ')}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-slate-500">공항</div>
+              <div className="text-[11px] text-slate-300">{picked.airports.length ? picked.airports.join(', ') : '없음'}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-slate-500">항만</div>
+              <div className="text-[11px] text-slate-300">{picked.ports.length ? picked.ports.join(', ') : '없음'}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-slate-500">주요 인프라/랜드마크</div>
+              <ul className="text-[11px] text-slate-300 space-y-0.5">
+                {picked.notableInfra.map((i, idx) => <li key={idx}>· {i}</li>)}
+              </ul>
+            </div>
+            <div>
+              <div className="text-[10px] text-slate-500">관할 건축물 ({buildings.filter(b => b.region === picked.id).length})</div>
+              <div className="text-[11px] text-slate-300 max-h-32 overflow-y-auto">
+                {buildings.filter(b => b.region === picked.id).slice(0, 20).map(b => (
+                  <div key={b.id}>· {b.name} <span className="text-[10px] text-slate-500">({b.category})</span></div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </Panel>
+      )}
+    </>
+  );
+}
+
+// ============ 토건 (건축물) ============
+function InfraTab() {
+  const buildings = useGame(s => s.state!.buildings);
+  const regions = useGame(s => s.state!.regions);
+  const addBuilding = useGame(s => s.addBuilding);
+  const removeBuilding = useGame(s => s.removeBuilding);
+  const updateBuildingStatus = useGame(s => s.updateBuildingStatus);
+  const [cat, setCat] = useState<BuildingCategory | 'ALL'>('ALL');
+  const [filter, setFilter] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
+  const [newB, setNewB] = useState({
+    name: '', category: '주거' as BuildingCategory, region: 'SEOUL' as RegionId | 'OFFSHORE' | 'OVERSEAS',
+    location: '', size: '', desc: '',
+  });
+
+  const list = buildings
+    .filter(b => cat === 'ALL' || b.category === cat)
+    .filter(b => !filter || b.name.includes(filter) || b.location.includes(filter));
+
+  const grouped: Record<string, typeof buildings> = {};
+  for (const b of list) (grouped[b.category] ??= []).push(b);
+
+  const CATEGORIES: BuildingCategory[] = ['주거','상업','공업','교통','에너지','수자원','국방','교육','의료','문화','연구','농수산','관광','해양','우주','기타'];
+
+  return (
+    <>
+      <Panel title={`전국 건축물·인프라 (${list.length}/${buildings.length})`} right={
+        <button onClick={() => setShowAdd(!showAdd)} className="btn text-[10px] py-0.5">+ 건축</button>
+      }>
+        <div className="flex gap-1 flex-wrap mb-2">
+          <button onClick={() => setCat('ALL')} className={`text-[10px] px-1.5 py-0.5 rounded ${cat === 'ALL' ? 'bg-blue-700' : 'bg-slate-800'}`}>전체</button>
+          {CATEGORIES.map(c => (
+            <button key={c} onClick={() => setCat(c)} className={`text-[10px] px-1.5 py-0.5 rounded ${cat === c ? 'bg-blue-700' : 'bg-slate-800'}`}>{c}</button>
+          ))}
+        </div>
+        <input className="input w-full text-xs mb-2" placeholder="명칭/위치 검색"
+          value={filter} onChange={e => setFilter(e.target.value)} />
+
+        {showAdd && (
+          <div className="bg-slate-950/60 border border-blue-700 rounded p-2 mb-2 space-y-1">
+            <div className="text-[10px] text-blue-300">신규 건축 명령</div>
+            <input className="input w-full text-xs" placeholder="명칭" value={newB.name}
+              onChange={e => setNewB({ ...newB, name: e.target.value })} />
+            <div className="grid grid-cols-2 gap-1">
+              <select className="input text-xs" value={newB.category}
+                onChange={e => setNewB({ ...newB, category: e.target.value as BuildingCategory })}>
+                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <select className="input text-xs" value={newB.region}
+                onChange={e => setNewB({ ...newB, region: e.target.value as any })}>
+                {regions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                <option value="OFFSHORE">해상/도서</option>
+                <option value="OVERSEAS">해외</option>
+              </select>
+            </div>
+            <input className="input w-full text-xs" placeholder="위치 (예: 서울 강남구)" value={newB.location}
+              onChange={e => setNewB({ ...newB, location: e.target.value })} />
+            <input className="input w-full text-xs" placeholder="규모 (예: 50층)" value={newB.size}
+              onChange={e => setNewB({ ...newB, size: e.target.value })} />
+            <input className="input w-full text-xs" placeholder="설명" value={newB.desc}
+              onChange={e => setNewB({ ...newB, desc: e.target.value })} />
+            <button onClick={() => {
+              if (!newB.name || !newB.location) return alert('명칭·위치 필요');
+              addBuilding({ ...newB, status: 'CONSTRUCTING' });
+              setNewB({ ...newB, name: '', location: '', size: '', desc: '' });
+              setShowAdd(false);
+            }} className="btn-primary w-full text-[11px]">건축 시작</button>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {Object.entries(grouped).map(([c, items]) => (
+            <div key={c}>
+              <div className="text-[10px] text-slate-500 mb-0.5">{c} ({items.length})</div>
+              <div className="space-y-1">
+                {items.map(b => (
+                  <div key={b.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-200">
+                        {b.isLandmark && '⭐ '}{b.name}
+                      </span>
+                      <Chip color={
+                        b.status === 'OPERATING'      ? 'text-emerald-300 border-emerald-800 bg-emerald-900/30' :
+                        b.status === 'CONSTRUCTING'   ? 'text-yellow-300 border-yellow-800 bg-yellow-900/30' :
+                        b.status === 'PLANNED'        ? 'text-blue-300 border-blue-800 bg-blue-900/30' :
+                                                        'text-red-300 border-red-800 bg-red-900/30'
+                      }>{b.status}</Chip>
+                    </div>
+                    <div className="text-[10px] text-slate-500">{b.location}{b.size ? ` · ${b.size}` : ''}{b.builtYear ? ` · ${b.builtYear}년` : ''}</div>
+                    {b.desc && <div className="text-[10px] text-slate-400 mt-0.5">{b.desc}</div>}
+                    <div className="flex gap-1 mt-1">
+                      {b.status === 'CONSTRUCTING' && (
+                        <button onClick={() => updateBuildingStatus(b.id, 'OPERATING')} className="text-[10px] text-emerald-400">완공 처리</button>
+                      )}
+                      {b.status === 'OPERATING' && (
+                        <button onClick={() => updateBuildingStatus(b.id, 'DECOMMISSIONED')} className="text-[10px] text-orange-400">해체 명령</button>
+                      )}
+                      <button onClick={() => { if (confirm(`${b.name} 영구 삭제?`)) removeBuilding(b.id); }}
+                        className="text-[10px] text-red-400">삭제</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    </>
+  );
+}
+
+// ============ 사건 로그 ============
 function EventsTab() {
   const events = useGame(s => s.state!.events);
   const select = useGame(s => s.selectEvent);
   const dismiss = useGame(s => s.dismissEvent);
   const [tab, setTab] = useState<'PENDING' | 'ALL'>('PENDING');
-  const list = tab === 'PENDING'
-    ? events.filter(e => !e.resolved)
-    : events;
+  const list = tab === 'PENDING' ? events.filter(e => !e.resolved) : events;
   return (
     <Panel title={`사건 / 뉴스 (총 ${events.length}건)`}
       right={
@@ -719,6 +1139,7 @@ function EventsTab() {
               <div className="flex items-center gap-1 text-[10px]">
                 <Chip>{categoryLabel(ev.category)}</Chip>
                 <Chip>{ev.severity}</Chip>
+                {ev.mandatory && <Chip color="text-red-300 border-red-700 bg-red-900/40">필수</Chip>}
                 <span className="text-slate-400">{ev.date}</span>
               </div>
               <span className="text-[10px] text-slate-400">{ev.source}</span>
@@ -730,7 +1151,7 @@ function EventsTab() {
                 <button onClick={() => select(ev.id)} className="btn-primary text-[10px] py-1 px-2">
                   대응 결정 ({ev.choices.length}개 선택지)
                 </button>
-                <button onClick={() => dismiss(ev.id)} className="btn text-[10px] py-1 px-2">무시</button>
+                {!ev.mandatory && <button onClick={() => dismiss(ev.id)} className="btn text-[10px] py-1 px-2">무시</button>}
               </div>
             )}
             {ev.resolution && (
@@ -743,182 +1164,124 @@ function EventsTab() {
   );
 }
 
-// ============== 국제 정세 ==============
-function InternationalTab() {
+// ============ 국제 (국제기구 + 분쟁) ============
+function IntlTab() {
   const i = useGame(s => s.state!.international);
+  const orgs = useGame(s => s.state!.intlOrgs);
+  const countries = useGame(s => s.state!.countries);
+  const joinOrg = useGame(s => s.joinOrg);
+  const leaveOrg = useGame(s => s.leaveOrg);
+  const [section, setSection] = useState<'WORLD' | 'ORGS' | 'CONFLICTS'>('WORLD');
+  const [pickedOrgId, setPickedOrg] = useState<string | null>(null);
+  const pickedOrg = orgs.find(o => o.id === pickedOrgId);
+  const memberNames = pickedOrg
+    ? pickedOrg.memberCountries.map(cid => {
+        if (cid === 'KR') return '🇰🇷 대한민국';
+        const c = countries.find(x => x.id === cid);
+        return c ? `${c.flag} ${c.name}` : cid;
+      })
+    : [];
+
   return (
     <>
-      <Panel title="세계 경제">
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-          <Stat label="세계 GDP 성장" value={fmtPct(i.globalEconomy.worldGdpGrowth)} />
-          <Stat label="미국 성장" value={fmtPct(i.globalEconomy.usGrowth)} />
-          <Stat label="중국 성장" value={fmtPct(i.globalEconomy.chinaGrowth)} />
-          <Stat label="EU 성장" value={fmtPct(i.globalEconomy.euGrowth)} />
-          <Stat label="WTI 유가" value={`$${fmtNum(i.globalEconomy.oilPriceWTI, 1)}`} />
-          <Stat label="Brent 유가" value={`$${fmtNum(i.globalEconomy.oilPriceBrent, 1)}`} />
-          <Stat label="금" value={`$${fmtInt(i.globalEconomy.goldPrice)}/oz`} />
-          <Stat label="달러인덱스 DXY" value={fmtNum(i.globalEconomy.dxy, 1)} />
-        </div>
-      </Panel>
-      <Panel title="글로벌 증시">
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-          <Stat label="S&P 500" value={fmtInt(i.sp500)} />
-          <Stat label="Nasdaq" value={fmtInt(i.nasdaq)} />
-          <Stat label="니케이225" value={fmtInt(i.nikkei)} />
-          <Stat label="항셍" value={fmtInt(i.hangseng)} />
-          <Stat label="상하이종합" value={fmtInt(i.shanghai)} />
-          <Stat label="비트코인" value={`$${fmtInt(i.bitcoin)}`} />
-        </div>
-      </Panel>
-      <Panel title={`진행 중 분쟁 (${i.ongoingConflicts.length}건)`}>
-        <div className="space-y-1.5">
-          {i.ongoingConflicts.map(c => (
-            <div key={c.id} className="bg-slate-950/40 border border-slate-800 rounded p-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-200">{c.name}</span>
-                <Chip color={c.status === 'ACTIVE' ? 'text-red-300 border-red-700 bg-red-900/30' : 'text-yellow-300 border-yellow-700 bg-yellow-900/30'}>{c.status}</Chip>
-              </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">참여: {c.parties.join(', ')} · 시작 {c.startDate}</div>
-              <StatBar label="강도" value={c.intensity} valueLabel={`${c.intensity}`} inverted />
-              <div className="text-[11px] text-slate-300 mt-1">{c.description}</div>
-              <div className="text-[10px] text-blue-300 mt-1">한국 개입: {c.koreaInvolvement}</div>
-            </div>
-          ))}
-        </div>
-      </Panel>
-      <Panel title="현재 글로벌 이슈">
-        <ul className="text-[11px] text-slate-300 space-y-0.5">
-          {i.globalIssues.map((g, idx) => <li key={idx}>· {g}</li>)}
-        </ul>
-      </Panel>
-    </>
-  );
-}
-
-// ============== 언론 ==============
-function MediaTab() {
-  const media = useGame(s => s.state!.media);
-  const groups: Record<string, typeof media> = {};
-  for (const m of media) (groups[m.type] ??= []).push(m);
-  return (
-    <Panel title={`언론 매체 (${media.length}개)`}>
-      <div className="space-y-3">
-        {Object.entries(groups).map(([type, items]) => (
-          <div key={type}>
-            <div className="text-[10px] text-slate-500 mb-1">{type}</div>
-            <div className="space-y-1">
-              {items.map(m => (
-                <div key={m.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-200 font-semibold">{m.name}</span>
-                    <span className={`text-[10px] ${m.bias < -20 ? 'text-blue-300' : m.bias > 20 ? 'text-red-300' : 'text-slate-400'}`}>
-                      {m.bias < -20 ? '진보' : m.bias > 20 ? '보수' : '중도'} ({m.bias > 0 ? '+' : ''}{m.bias})
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-slate-500">
-                    {m.owner && `${m.owner} · `}
-                    {m.circulation && `${m.circulation}만부 · `}
-                    {m.viewership && `시청률 ${m.viewership}% · `}
-                    영향력 {m.influence}
-                  </div>
-                  <div className="mt-1 bar-bg h-1 relative">
-                    <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-500" />
-                    <div className={`bar-fill ${m.favorToPresident >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}
-                      style={{ width: `${Math.abs(m.favorToPresident) / 2}%`,
-                        marginLeft: m.favorToPresident >= 0 ? '50%' : `${50 - Math.abs(m.favorToPresident) / 2}%` }} />
-                  </div>
-                  <div className="text-[10px] text-right text-slate-500 mt-0.5">대통령 호의도: {m.favorToPresident > 0 ? '+' : ''}{m.favorToPresident}</div>
-                </div>
-              ))}
-            </div>
-          </div>
+      <div className="flex gap-1">
+        {(['WORLD','ORGS','CONFLICTS'] as const).map(t => (
+          <button key={t} onClick={() => setSection(t)}
+            className={`text-[10px] px-2 py-1 rounded ${section === t ? 'bg-rok-blue text-white' : 'bg-slate-800 text-slate-300'}`}>
+            {t === 'WORLD' ? '세계 경제·증시' : t === 'ORGS' ? '국제기구' : '진행 분쟁'}
+          </button>
         ))}
       </div>
-    </Panel>
-  );
-}
 
-// ============== SNS ==============
-function SnsTab() {
-  const sns = useGame(s => s.state!.sns);
-  return (
-    <>
-      <Panel title="여론 모니터링">
-        <div className="grid grid-cols-2 gap-2">
-          <div className="bg-slate-950/60 rounded p-2 border border-slate-800 text-center">
-            <div className="text-[10px] text-slate-400">대통령 일일 언급량</div>
-            <div className="text-2xl font-bold text-slate-100">{fmtInt(sns.presidentMentions)}만</div>
-          </div>
-          <div className="bg-slate-950/60 rounded p-2 border border-slate-800 text-center">
-            <div className="text-[10px] text-slate-400">종합 정서 점수</div>
-            <div className={`text-2xl font-bold ${sns.sentimentScore >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {sns.sentimentScore > 0 ? '+' : ''}{sns.sentimentScore}
+      {section === 'WORLD' && (
+        <>
+          <Panel title="세계 경제">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <Stat label="세계 GDP 성장" value={fmtPct(i.globalEconomy.worldGdpGrowth)} />
+              <Stat label="미국 성장"     value={fmtPct(i.globalEconomy.usGrowth)} />
+              <Stat label="중국 성장"     value={fmtPct(i.globalEconomy.chinaGrowth)} />
+              <Stat label="EU 성장"       value={fmtPct(i.globalEconomy.euGrowth)} />
+              <Stat label="WTI"           value={`$${fmtNum(i.globalEconomy.oilPriceWTI, 1)}`} />
+              <Stat label="Brent"         value={`$${fmtNum(i.globalEconomy.oilPriceBrent, 1)}`} />
+              <Stat label="금"            value={`$${fmtInt(i.globalEconomy.goldPrice)}/oz`} />
+              <Stat label="달러지수"      value={fmtNum(i.globalEconomy.dxy, 1)} />
             </div>
-          </div>
-        </div>
-        <StatBar label="시위·집회 동력" value={sns.protestSentiment} valueLabel={`${sns.protestSentiment}/100`} inverted />
-      </Panel>
-      <Panel title={`플랫폼별 (${sns.platforms.length}개)`}>
-        <div className="space-y-1">
-          {sns.platforms.map(p => (
-            <div key={p.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-200 font-semibold">{p.name}</span>
-                <span className="text-[10px] text-slate-500">{fmtInt(p.monthlyUsers)}만 MAU</span>
-              </div>
-              <div className="text-[10px] text-slate-500">{p.mainAge} · {p.desc}</div>
-              <div className="grid grid-cols-2 gap-2 mt-1">
-                <div>
-                  <div className="text-[10px] text-slate-500">평균 성향</div>
-                  <div className="bar-bg h-1 relative">
-                    <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-500" />
-                    <div className={`bar-fill ${p.bias < 0 ? 'bg-blue-500' : 'bg-red-500'}`}
-                      style={{ width: `${Math.abs(p.bias) / 2}%`,
-                        marginLeft: p.bias < 0 ? `${50 - Math.abs(p.bias) / 2}%` : '50%' }} />
+          </Panel>
+          <Panel title="글로벌 증시">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <Stat label="S&P 500"   value={fmtInt(i.sp500)} />
+              <Stat label="Nasdaq"    value={fmtInt(i.nasdaq)} />
+              <Stat label="니케이225" value={fmtInt(i.nikkei)} />
+              <Stat label="항셍"      value={fmtInt(i.hangseng)} />
+              <Stat label="상하이"    value={fmtInt(i.shanghai)} />
+              <Stat label="비트코인"  value={`$${fmtInt(i.bitcoin)}`} />
+            </div>
+          </Panel>
+          <Panel title="현재 글로벌 이슈">
+            <ul className="text-[11px] text-slate-300 space-y-0.5">
+              {i.globalIssues.map((g, idx) => <li key={idx}>· {g}</li>)}
+            </ul>
+          </Panel>
+        </>
+      )}
+
+      {section === 'ORGS' && (
+        <>
+          <Panel title={`국제기구 (가입 ${orgs.filter(o => o.koreaMember).length}/${orgs.length})`}>
+            <div className="space-y-1">
+              {orgs.map(o => (
+                <button key={o.id} onClick={() => setPickedOrg(o.id)}
+                  className={`w-full text-left bg-slate-950/40 border rounded p-1.5 text-xs hover:border-blue-500 ${pickedOrgId === o.id ? 'border-blue-500' : 'border-slate-800'}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-200 font-semibold">{o.name}</span>
+                    {o.koreaMember
+                      ? <Chip color="text-emerald-300 border-emerald-800 bg-emerald-900/30">{o.koreaRole}</Chip>
+                      : <Chip color="text-slate-400">비회원</Chip>}
                   </div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-slate-500">대통령 호감</div>
-                  <div className="bar-bg h-1 relative">
-                    <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-500" />
-                    <div className={`bar-fill ${p.presidentFavor < 0 ? 'bg-red-500' : 'bg-emerald-500'}`}
-                      style={{ width: `${Math.abs(p.presidentFavor) / 2}%`,
-                        marginLeft: p.presidentFavor < 0 ? `${50 - Math.abs(p.presidentFavor) / 2}%` : '50%' }} />
-                  </div>
-                </div>
-              </div>
+                  <div className="text-[10px] text-slate-500">{o.fullName ?? ''} · {o.founded} · HQ: {o.hq}</div>
+                </button>
+              ))}
             </div>
-          ))}
-        </div>
-      </Panel>
-      <Panel title="실시간 트렌드 키워드">
-        <div className="space-y-1">
-          {sns.hotKeywords.map(k => (
-            <div key={k.keyword} className="flex items-center justify-between text-xs bg-slate-950/40 border border-slate-800 rounded px-2 py-1">
-              <span className="text-slate-200">#{k.keyword}</span>
-              <div className="flex items-center gap-3">
-                <span className="text-[10px] text-slate-500">{fmtInt(k.volume)}만건</span>
-                <span className={`font-mono text-[10px] ${k.sentiment >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
-                  {k.sentiment > 0 ? '+' : ''}{k.sentiment}
-                </span>
+          </Panel>
+          {pickedOrg && (
+            <Panel title={pickedOrg.name}>
+              <Stat label="유형"   value={pickedOrg.type} />
+              <Stat label="설립"   value={pickedOrg.founded} />
+              <Stat label="본부"   value={pickedOrg.hq} />
+              <Stat label="회원국" value={`${pickedOrg.memberCountries.length}개`} />
+              <Stat label="한국지위" value={pickedOrg.koreaMember ? pickedOrg.koreaRole : '비회원'} />
+              {pickedOrg.contributionUSD && <Stat label="연 분담금" value={`$${pickedOrg.contributionUSD}M`} />}
+              <div className="text-[11px] text-slate-300 mt-2">{pickedOrg.desc}</div>
+              {pickedOrg.benefits && <div className="text-[10px] text-emerald-300 mt-1">혜택: {pickedOrg.benefits}</div>}
+              {pickedOrg.notes && <div className="text-[10px] text-orange-300 mt-1">비고: {pickedOrg.notes}</div>}
+              <div className="mt-2 text-[10px] text-slate-500">회원국 ({pickedOrg.memberCountries.length})</div>
+              <div className="text-[11px] text-slate-300 max-h-32 overflow-y-auto leading-relaxed">
+                {memberNames.length ? memberNames.join(', ') : '- 회원국 정보 없음 -'}
               </div>
-            </div>
-          ))}
-        </div>
-      </Panel>
-      {sns.recentPosts.length > 0 && (
-        <Panel title="최근 인기 게시물">
-          <div className="space-y-1">
-            {sns.recentPosts.slice(0, 8).map(post => (
-              <div key={post.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
-                <div className="flex justify-between text-[10px] text-slate-500 mb-0.5">
-                  <span>[{post.platform}] {post.author}</span>
-                  <span className={post.sentiment >= 0 ? 'text-emerald-300' : 'text-red-300'}>
-                    {post.sentiment > 0 ? '+' : ''}{post.sentiment}
-                  </span>
+              <div className="mt-2 flex gap-1">
+                {pickedOrg.koreaMember
+                  ? <button onClick={() => { if (confirm(`${pickedOrg.name}에서 탈퇴하시겠습니까?`)) leaveOrg(pickedOrg.id); }}
+                            className="btn-danger w-full text-[11px]">탈퇴</button>
+                  : <button onClick={() => joinOrg(pickedOrg.id)} className="btn-primary w-full text-[11px]">가입 신청</button>}
+              </div>
+            </Panel>
+          )}
+        </>
+      )}
+
+      {section === 'CONFLICTS' && (
+        <Panel title={`진행 중 분쟁 (${i.ongoingConflicts.length}건)`}>
+          <div className="space-y-1.5">
+            {i.ongoingConflicts.map(c => (
+              <div key={c.id} className="bg-slate-950/40 border border-slate-800 rounded p-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-200">{c.name}</span>
+                  <Chip color={c.status === 'ACTIVE' ? 'text-red-300 border-red-700 bg-red-900/30' : 'text-yellow-300 border-yellow-700 bg-yellow-900/30'}>{c.status}</Chip>
                 </div>
-                <div className="text-slate-200">{post.content}</div>
-                <div className="text-[10px] text-slate-500 mt-0.5">♥ {fmtInt(post.likes)} · ↻ {fmtInt(post.reposts)}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">참여: {c.parties.join(', ')} · 시작 {c.startDate}</div>
+                <StatBar label="강도" value={c.intensity} valueLabel={`${c.intensity}`} inverted />
+                <div className="text-[11px] text-slate-300 mt-1">{c.description}</div>
+                <div className="text-[10px] text-blue-300 mt-1">한국 개입: {c.koreaInvolvement}</div>
               </div>
             ))}
           </div>
@@ -928,7 +1291,211 @@ function SnsTab() {
   );
 }
 
-// ====== 작은 유틸 ======
+// ============ 언론 (매체 + 기사) ============
+function MediaTab() {
+  const media = useGame(s => s.state!.media);
+  const articles = useGame(s => s.state!.articles);
+  const [section, setSection] = useState<'OUTLETS' | 'ARTICLES'>('ARTICLES');
+  const grouped: Record<string, typeof media> = {};
+  for (const m of media) (grouped[m.type] ??= []).push(m);
+
+  return (
+    <>
+      <div className="flex gap-1">
+        {(['ARTICLES','OUTLETS'] as const).map(t => (
+          <button key={t} onClick={() => setSection(t)}
+            className={`text-[10px] px-2 py-1 rounded ${section === t ? 'bg-rok-blue text-white' : 'bg-slate-800 text-slate-300'}`}>
+            {t === 'ARTICLES' ? '📰 기사' : '🏢 매체'}
+          </button>
+        ))}
+      </div>
+
+      {section === 'ARTICLES' && (
+        <Panel title={`최근 보도 (${articles.length})`}>
+          <div className="space-y-1.5">
+            {articles.slice().reverse().map(a => {
+              const outletInfo = media.find(m => m.id === a.outlet);
+              return (
+                <div key={a.id} className="bg-slate-950/40 border border-slate-800 rounded p-2">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                      <span className="text-slate-300 font-semibold">{outletInfo?.name ?? a.outlet}</span>
+                      <span className="text-slate-500">·</span>
+                      <span className="text-slate-500">{a.date}</span>
+                      <Chip>{categoryLabel(a.category)}</Chip>
+                    </div>
+                    <span className={`text-[9px] ${a.bias < -20 ? 'text-blue-300' : a.bias > 20 ? 'text-red-300' : 'text-slate-400'}`}>
+                      {a.bias < -20 ? '진보' : a.bias > 20 ? '보수' : '중도'}
+                    </span>
+                  </div>
+                  <div className="text-xs font-semibold text-slate-100">{a.headline}</div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">{a.lead}</div>
+                  {a.body && <div className="text-[11px] text-slate-300 mt-1 leading-relaxed">{a.body}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
+
+      {section === 'OUTLETS' && (
+        <Panel title={`언론 매체 (${media.length}개)`}>
+          <div className="space-y-3">
+            {Object.entries(grouped).map(([type, items]) => (
+              <div key={type}>
+                <div className="text-[10px] text-slate-500 mb-1">{type}</div>
+                <div className="space-y-1">
+                  {items.map(m => (
+                    <div key={m.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-200 font-semibold">{m.name}</span>
+                        <span className={`text-[10px] ${m.bias < -20 ? 'text-blue-300' : m.bias > 20 ? 'text-red-300' : 'text-slate-400'}`}>
+                          {m.bias < -20 ? '진보' : m.bias > 20 ? '보수' : '중도'} ({m.bias > 0 ? '+' : ''}{m.bias})
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        {m.owner && `${m.owner} · `}
+                        {m.circulation && `${m.circulation}만부 · `}
+                        {m.viewership && `시청률 ${m.viewership}% · `}
+                        영향력 {m.influence}
+                      </div>
+                      <div className="mt-1 bar-bg h-1 relative">
+                        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-500" />
+                        <div className={`bar-fill ${m.favorToPresident >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}
+                          style={{ width: `${Math.abs(m.favorToPresident) / 2}%`,
+                            marginLeft: m.favorToPresident >= 0 ? '50%' : `${50 - Math.abs(m.favorToPresident) / 2}%` }} />
+                      </div>
+                      <div className="text-[10px] text-right text-slate-500 mt-0.5">대통령 호의도: {m.favorToPresident > 0 ? '+' : ''}{m.favorToPresident}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+    </>
+  );
+}
+
+// ============ SNS ============
+function SnsTab() {
+  const sns = useGame(s => s.state!.sns);
+  const [section, setSection] = useState<'POSTS' | 'OVERVIEW'>('POSTS');
+  const [platform, setPlatform] = useState<string | 'ALL'>('ALL');
+
+  const filteredPosts = (platform === 'ALL'
+    ? sns.recentPosts
+    : sns.recentPosts.filter(p => p.platform === platform))
+    .slice().reverse();
+
+  return (
+    <>
+      <div className="flex gap-1">
+        {(['POSTS','OVERVIEW'] as const).map(t => (
+          <button key={t} onClick={() => setSection(t)}
+            className={`text-[10px] px-2 py-1 rounded ${section === t ? 'bg-rok-blue text-white' : 'bg-slate-800 text-slate-300'}`}>
+            {t === 'POSTS' ? '📱 게시물' : '📊 통계'}
+          </button>
+        ))}
+      </div>
+
+      {section === 'OVERVIEW' && (
+        <>
+          <Panel title="여론 모니터링">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-slate-950/60 rounded p-2 border border-slate-800 text-center">
+                <div className="text-[10px] text-slate-400">대통령 일일 언급량</div>
+                <div className="text-2xl font-bold text-slate-100">{fmtInt(sns.presidentMentions)}만</div>
+              </div>
+              <div className="bg-slate-950/60 rounded p-2 border border-slate-800 text-center">
+                <div className="text-[10px] text-slate-400">종합 정서</div>
+                <div className={`text-2xl font-bold ${sns.sentimentScore >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {sns.sentimentScore > 0 ? '+' : ''}{sns.sentimentScore.toFixed(0)}
+                </div>
+              </div>
+            </div>
+            <StatBar label="시위·집회 동력" value={sns.protestSentiment} valueLabel={`${sns.protestSentiment}/100`} inverted />
+          </Panel>
+          <Panel title={`플랫폼 (${sns.platforms.length})`}>
+            <div className="space-y-1">
+              {sns.platforms.map(p => (
+                <div key={p.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-200 font-semibold">{p.name}</span>
+                    <span className="text-[10px] text-slate-500">{fmtInt(p.monthlyUsers)}만 MAU</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500">{p.mainAge} · {p.desc}</div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+          <Panel title="실시간 트렌드 키워드">
+            <div className="space-y-1">
+              {sns.hotKeywords.map(k => (
+                <div key={k.keyword} className="flex items-center justify-between text-xs bg-slate-950/40 border border-slate-800 rounded px-2 py-1">
+                  <span className="text-slate-200">#{k.keyword}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] text-slate-500">{fmtInt(k.volume)}만건</span>
+                    <span className={`font-mono text-[10px] ${k.sentiment >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+                      {k.sentiment > 0 ? '+' : ''}{k.sentiment}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </>
+      )}
+
+      {section === 'POSTS' && (
+        <Panel title={`최신 게시물 (${filteredPosts.length})`}>
+          <div className="flex gap-1 flex-wrap mb-2">
+            <button onClick={() => setPlatform('ALL')} className={`text-[10px] px-1.5 py-0.5 rounded ${platform === 'ALL' ? 'bg-blue-700' : 'bg-slate-800'}`}>전체</button>
+            {sns.platforms.map(p => (
+              <button key={p.id} onClick={() => setPlatform(p.id)}
+                className={`text-[10px] px-1.5 py-0.5 rounded ${platform === p.id ? 'bg-blue-700' : 'bg-slate-800'}`}>
+                {p.name}
+              </button>
+            ))}
+          </div>
+          <div className="space-y-1.5">
+            {filteredPosts.length === 0 && <div className="text-[11px] text-slate-500">게시물이 없습니다. 턴을 진행하면 AI가 새 게시물을 생성합니다.</div>}
+            {filteredPosts.map(post => {
+              const plat = sns.platforms.find(p => p.id === post.platform);
+              return (
+                <div key={post.id} className="bg-slate-950/40 border border-slate-800 rounded p-2 text-xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-1 text-[10px]">
+                      <span className="font-semibold text-slate-300">{plat?.name ?? post.platform}</span>
+                      <span className="text-slate-500">·</span>
+                      <span className="text-slate-300">{post.author}</span>
+                      {post.handle && <span className="text-slate-500">{post.handle}</span>}
+                    </div>
+                    <span className="text-[9px] text-slate-500">{post.timestamp}</span>
+                  </div>
+                  <div className="text-slate-200 leading-relaxed">{post.content}</div>
+                  <div className="flex justify-between mt-1 text-[10px] text-slate-500">
+                    <div className="flex gap-2">
+                      <span>♥ {fmtInt(post.likes)}</span>
+                      <span>↻ {fmtInt(post.reposts)}</span>
+                      <span>💬 {fmtInt(post.comments)}</span>
+                    </div>
+                    <span className={`font-mono ${post.sentiment >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+                      {post.sentiment > 0 ? '+' : ''}{post.sentiment}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
+    </>
+  );
+}
+
+// ====== 유틸 ======
 function MiniStat({ label, value, tone }: { label: string; value: string; tone: 'good' | 'warn' | 'bad' | 'neutral' }) {
   const color =
     tone === 'good' ? 'text-emerald-400 border-emerald-900 bg-emerald-950/30' :
