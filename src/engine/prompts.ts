@@ -262,6 +262,88 @@ ${summarizeState(s)}
 
 ${EFFECTS_SCHEMA_INSTRUCTION}
 
+[액션(actions) 시스템 — 결정이 게임 상태를 직접 변경할 때 사용]
+
+대통령의 결정에 따라 게임 상태를 직접 변경해야 할 때, actions 배열에 액션을 담아라.
+액션은 effects(수치 변화)와 별개로 추가 객체·구조 변경을 일으킨다.
+
+actions: [
+  // 건축물 추가 (대통령이 "X 건설" "Y 착공" 등을 지시할 때)
+  { "type": "ADD_BUILDING", "params": {
+      "name": "신규 빌딩명",
+      "category": "주거|상업|공업|교통|에너지|수자원|국방|교육|의료|문화|연구|농수산|관광|해양|우주|기타",
+      "region": "SEOUL|BUSAN|...|JEJU|OFFSHORE|OVERSEAS",
+      "location": "위치 텍스트 (예: 서울 강남구)",
+      "size": "30층×8동 같은 규모 설명",
+      "desc": "설명",
+      "isLandmark": false
+  } },
+  // 건축물 영구 삭제 (이름 매칭, "X 철거" "Y 폭파")
+  { "type": "REMOVE_BUILDING", "params": { "nameMatch": "건물명 일부" } },
+  // 건축물 운용 중단 (해체 명령, 사용은 안 하지만 기록은 유지)
+  { "type": "DECOMMISSION_BUILDING", "params": { "nameMatch": "..." } },
+
+  // 무기 신규 도입 ("F-35 추가 도입" "K2 전차 100대 발주")
+  { "type": "ADD_WEAPON", "params": {
+      "category": "전차|장갑차|자주포|견인포|다연장|전투기|공격기|수송기|헬기|구축함|잠수함|호위함|미사일|방공|레이더|드론|기타",
+      "name": "정확한 무기명",
+      "count": 숫자,
+      "origin": "국산|미국|독일|이스라엘|...",
+      "notes": "비고"
+  } },
+  // 무기 폐기·매각
+  { "type": "REMOVE_WEAPON", "params": { "nameMatch": "..." } },
+  // 무기 수량 증감 ("K9 자주포 50대 추가/우크라이나 공여")
+  { "type": "ADJUST_WEAPON_COUNT", "params": { "nameMatch": "...", "delta": 정수 } },
+
+  // 부대 창설 ("드론작전사령부 산하 무인기여단 창설")
+  { "type": "ADD_UNIT", "params": {
+      "name": "부대명", "echelon": "군|군단|사단|여단|함대|비행단|특임|예비",
+      "service": "육군|해군|공군|해병|예비|국직",
+      "hq": "주둔지", "personnel": 숫자, "notes": "비고"
+  } },
+  // 부대 해체
+  { "type": "REMOVE_UNIT", "params": { "nameMatch": "..." } },
+
+  // 군사기지 신설 / 폐쇄
+  { "type": "ADD_BASE", "params": { "name": "...", "type": "육군|해군|공군|해병|합동|미군|특수", "region": "...", "location": "...", "personnel": 숫자 } },
+  { "type": "REMOVE_BASE", "params": { "nameMatch": "..." } },
+
+  // 전쟁 종결 + 조약 체결 (대통령이 "X와 평화 협상 타결" 등을 지시할 때)
+  { "type": "SIGN_TREATY", "params": {
+      "name": "조약명 (예: 한-NK 평화협정)",
+      "warId": "(선택) 종결할 전쟁 ID",
+      "parties": ["KR", "NK", ...],
+      "victor": "KOREA|OPPONENT|COALITION|STALEMATE",
+      "summary": "조약 요지 1~2문장",
+      "ceasefire": true,
+      "reparationsKRW": 숫자 (한국 수령 +, 지불 -, 조원),
+      "territorialCession": [
+        { "fromCountryId": "NK", "toCountryId": "KR", "description": "황해도 남부", "sizePercent": 15 }
+      ],
+      "newCountries": [
+        { "name": "고려공화국", "fromCountryId": "NK", "population": 800, "capital": "평양", "initialRelationKorea": 60 }
+      ],
+      "annexations": [{ "absorberId": "KR", "absorbedId": "NK" }],
+      "alliances": ["VN","PH"],
+      "sanctionsLifted": ["IR"],
+      "notes": "추가 메모"
+  } },
+
+  // 전쟁 개시 / 종결
+  { "type": "BEGIN_WAR", "params": { "name": "...", "parties": [], "koreaRole": "DIPLOMATIC|HUMANITARIAN|LOGISTICAL|COMBAT", "troops": 숫자, "costPerMonth": 조원, "notes": "..." } },
+  { "type": "END_WAR", "params": { "warId": "..." } },
+
+  // 외국 지도자 교체 (시뮬레이션 사건 발생 시)
+  { "type": "CHANGE_LEADER", "params": { "countryId": "JP", "newLeader": "..." } }
+]
+
+[액션 사용 규칙]
+- 대통령의 결정이 명시적으로 건축·해체·무기 도입·조약·합병 등을 포함하지 않으면 actions는 빈 배열 [].
+- 대통령이 "건설" "착공" "도입" "구축" "신설" "폐기" "철거" "해체" "조약" "할양" "독립" "병합" 등을 명시한 경우 즉시 해당 액션을 발행.
+- 액션은 부수적 효과(effects)와 함께 발행. 예: "F-35 20대 추가 도입" → ADD_WEAPON + economy.fiscalBalance/treasuryBalanceKRW 감소.
+- 사용자가 명시하지 않은 추가 행동(예: "그러면서 핵 개발도") 절대 금지.
+
 JSON 출력 형식(반드시 이 구조):
 {
   "newsHeadline": "string (간결·임팩트, 한국 신문 톤)",
@@ -269,7 +351,8 @@ JSON 출력 형식(반드시 이 구조):
   "mediaReactions": [
     { "outlet": "조선일보|한겨레|JTBC|KBS|YTN|중앙일보|동아일보|경향신문|매일경제|연합뉴스|...", "headline": "string" }
   ],
-  "effects": { ... },
+  "effects": { ... 수치 변화 ... },
+  "actions": [ ... 구조 변경 액션 (선택, 위 스키마 따름) ... ],
   "advisorReply": "비서실장의 보고 — 크랙 톤. 6~10문장 이내. 결정의 의미·반응·다음 과제 요약."
 }`;
 }

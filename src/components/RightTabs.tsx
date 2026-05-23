@@ -1552,11 +1552,13 @@ function IntlTab() {
   const i = useGame(s => s.state!.international);
   const orgs = useGame(s => s.state!.intlOrgs);
   const countries = useGame(s => s.state!.countries);
+  const worldEvents = useGame(s => s.state!.worldEvents);
+  const treaties = useGame(s => s.state!.treaties);
   const joinOrg = useGame(s => s.joinOrg);
   const leaveOrg = useGame(s => s.leaveOrg);
   const createOrg = useGame(s => s.createOrg);
   const deleteOrg = useGame(s => s.deleteOrg);
-  const [section, setSection] = useState<'WORLD' | 'ORGS' | 'CONFLICTS' | 'CREATE'>('WORLD');
+  const [section, setSection] = useState<'FEED' | 'WORLD' | 'ORGS' | 'CONFLICTS' | 'CREATE' | 'TREATIES'>('FEED');
   const [pickedOrgId, setPickedOrg] = useState<string | null>(null);
   const pickedOrg = orgs.find(o => o.id === pickedOrgId);
   const [newOrg, setNewOrg] = useState<{ name: string; fullName: string; type: import('../types/game').IntlOrg['type']; hq: string; desc: string; foundingMembers: string[] }>({
@@ -1573,13 +1575,99 @@ function IntlTab() {
   return (
     <>
       <div className="flex gap-1 flex-wrap">
-        {(['WORLD','ORGS','CONFLICTS','CREATE'] as const).map(t => (
+        {(['FEED','WORLD','ORGS','CONFLICTS','TREATIES','CREATE'] as const).map(t => (
           <button key={t} onClick={() => setSection(t)}
             className={`text-[10px] px-2 py-1 rounded ${section === t ? 'bg-rok-blue text-white' : 'bg-slate-800 text-slate-300'}`}>
-            {t === 'WORLD' ? '세계 경제·증시' : t === 'ORGS' ? '국제기구' : t === 'CONFLICTS' ? '진행 분쟁' : '🆕 기구 창설'}
+            {t === 'FEED' ? '🌐 국제 정세' : t === 'WORLD' ? '세계 경제' : t === 'ORGS' ? '국제기구' : t === 'CONFLICTS' ? '진행 분쟁' : t === 'TREATIES' ? '📜 조약' : '🆕 기구 창설'}
           </button>
         ))}
       </div>
+
+      {section === 'FEED' && (
+        <Panel title={`능동 국제정세 피드 (${worldEvents.length})`} right={<span className="text-[10px] text-emerald-300">⏱ 매 턴 갱신</span>}>
+          {worldEvents.length === 0 && (
+            <div className="text-[11px] text-slate-500 text-center py-3">
+              턴을 진행하면 AI가 한국 외 국가들의 능동적 행동을 생성합니다.
+            </div>
+          )}
+          <div className="space-y-1.5">
+            {worldEvents.map(w => {
+              const impactColor = ({
+                NONE: 'text-slate-400',
+                LOW:  'text-slate-300',
+                MED:  'text-yellow-300',
+                HIGH: 'text-red-300',
+              } as any)[w.koreaImpact];
+              const catLabel = ({
+                DIPLOMACY: '외교', WAR: '전쟁', ECONOMY: '경제',
+                DOMESTIC: '내정', TECH: '과학기술', DISASTER: '재난',
+                LEADERSHIP: '지도부', TREATY: '조약',
+              } as any)[w.category] ?? w.category;
+              return (
+                <div key={w.id} className="bg-slate-950/40 border border-slate-800 rounded p-2">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <div className="flex items-center gap-1 text-[10px]">
+                      <Chip>{catLabel}</Chip>
+                      <span className="text-slate-500">{w.date}</span>
+                      <span className="text-slate-500">·</span>
+                      <span className="text-slate-400">{w.involvedCountries.slice(0, 4).join(', ')}</span>
+                    </div>
+                    <span className={`text-[10px] ${impactColor}`}>한국영향 {w.koreaImpact}</span>
+                  </div>
+                  <div className="text-xs font-semibold text-slate-100">{w.headline}</div>
+                  <div className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">{w.body}</div>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
+
+      {section === 'TREATIES' && (
+        <Panel title={`체결 조약 (${treaties.length})`}>
+          {treaties.length === 0 && <div className="text-[11px] text-slate-500 text-center py-3">아직 체결된 조약이 없습니다. 채팅에서 "X와 평화조약 체결" 등을 결정하면 AI가 조약 액션을 발행합니다.</div>}
+          <div className="space-y-1.5">
+            {treaties.map(t => (
+              <div key={t.id} className="bg-slate-950/40 border border-slate-800 rounded p-2">
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="text-xs font-semibold text-slate-100">{t.name}</span>
+                  <Chip color={
+                    t.victor === 'KOREA' ? 'text-emerald-300 border-emerald-700 bg-emerald-900/30' :
+                    t.victor === 'OPPONENT' ? 'text-red-300 border-red-700 bg-red-900/30' :
+                    'text-slate-300 border-slate-700'
+                  }>{
+                    t.victor === 'KOREA' ? '한국 승리' :
+                    t.victor === 'OPPONENT' ? '상대 승리' :
+                    t.victor === 'COALITION' ? '연합 승리' : '무승부'
+                  }</Chip>
+                </div>
+                <div className="text-[10px] text-slate-500">{t.signedAt} · 당사국 {t.parties.join(', ')}</div>
+                <div className="text-[11px] text-slate-300 mt-1">{t.summary}</div>
+                <div className="text-[10px] text-slate-400 mt-1 space-y-0.5">
+                  {t.terms.ceasefire && <div>· 휴전 발효</div>}
+                  {t.terms.reparationsKRW !== undefined && t.terms.reparationsKRW !== 0 && (
+                    <div className={t.terms.reparationsKRW > 0 ? 'text-emerald-300' : 'text-red-300'}>
+                      · 배상금 {t.terms.reparationsKRW > 0 ? '수령' : '지불'} {Math.abs(t.terms.reparationsKRW)}조원
+                    </div>
+                  )}
+                  {t.terms.territorialCession?.map((c, i) => (
+                    <div key={i} className="text-amber-300">· 영토 할양: {c.fromCountryId} → {c.toCountryId} ({c.description}, {c.sizePercent}%)</div>
+                  ))}
+                  {t.terms.newCountries?.map((n, i) => (
+                    <div key={i} className="text-cyan-300">· 신생 독립국: {n.name} ({n.fromCountryId} 분리)</div>
+                  ))}
+                  {t.terms.annexations?.map((a, i) => (
+                    <div key={i} className="text-red-300">· 완전 합병: {a.absorberId} ← {a.absorbedId}</div>
+                  ))}
+                  {t.terms.alliances && t.terms.alliances.length > 0 && (
+                    <div className="text-blue-300">· 동맹: {t.terms.alliances.join(', ')}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
 
       {section === 'WORLD' && (
         <>

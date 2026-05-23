@@ -747,6 +747,67 @@ export interface GameState {
   elections: Election[];
   cultural: CulturalState;
   pastTerms: TermEvaluation[];
+  worldEvents: WorldEvent[];
+  treaties: Treaty[];
+}
+
+// ---------------- 국제 뉴스 피드 (한국 외 국가들의 능동 행동) ----------------
+export interface WorldEvent {
+  id: string;
+  date: string;
+  category: 'DIPLOMACY' | 'WAR' | 'ECONOMY' | 'DOMESTIC' | 'TECH' | 'DISASTER' | 'LEADERSHIP' | 'TREATY';
+  headline: string;
+  body: string;
+  involvedCountries: string[];
+  koreaImpact: 'NONE' | 'LOW' | 'MED' | 'HIGH';
+}
+
+// ---------------- 조약 ----------------
+export interface Treaty {
+  id: string;
+  signedAt: string;
+  warId?: string;
+  name: string;
+  parties: string[];
+  victor: 'KOREA' | 'OPPONENT' | 'COALITION' | 'STALEMATE';
+  terms: TreatyTerms;
+  summary: string;
+}
+
+export interface TreatyTerms {
+  ceasefire: boolean;
+  reparationsKRW?: number;
+  territorialCession?: {
+    fromCountryId: string;
+    toCountryId: string;
+    description: string;
+    sizePercent: number;
+  }[];
+  newCountries?: {
+    name: string;
+    fromCountryId: string;
+    population: number;
+    capital: string;
+    initialRelationKorea: number;
+  }[];
+  annexations?: { absorberId: string; absorbedId: string }[];
+  alliances?: string[];
+  sanctionsLifted?: string[];
+  notes?: string;
+}
+
+// ---------------- AI 액션 (채팅 결정으로 인한 게임 상태 변경) ----------------
+export type AIActionType =
+  | 'ADD_BUILDING' | 'REMOVE_BUILDING' | 'DECOMMISSION_BUILDING'
+  | 'ADD_WEAPON'   | 'REMOVE_WEAPON'   | 'ADJUST_WEAPON_COUNT'
+  | 'ADD_UNIT'     | 'REMOVE_UNIT'
+  | 'ADD_BASE'     | 'REMOVE_BASE'
+  | 'SIGN_TREATY'  | 'BEGIN_WAR'      | 'END_WAR'
+  | 'CREATE_COUNTRY' | 'ANNEX_COUNTRY' | 'CHANGE_LEADER';
+
+export interface AIAction {
+  type: AIActionType;
+  params: any;
 }
 
 // ---------------- 선거 ----------------

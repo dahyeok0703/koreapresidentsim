@@ -1,5 +1,5 @@
 import { openaiChat, openaiJSON } from '../api/openai';
-import type { GameState, GameEvent, ChatMessage, PartialEffects, SnsPost, NewsArticle } from '../types/game';
+import type { GameState, GameEvent, ChatMessage, PartialEffects, SnsPost, NewsArticle, WorldEvent, AIAction, Building, WeaponEntry, MilitaryUnit, MilitaryBase, Treaty } from '../types/game';
 import { genId } from '../data/initialState';
 import { applyEffects, advanceClock } from './effects';
 import {
@@ -37,6 +37,7 @@ export interface DecisionResult {
   mediaReactions: { outlet: string; headline: string }[];
   effects: PartialEffects;
   advisorReply: string;
+  actions?: AIAction[];      // 채팅 결정 → 게임 상태 직접 변경
 }
 
 export async function evaluateDecision(
@@ -172,6 +173,48 @@ JSON: {"posts":[{"platform":"${platformIds}","author":"닉네임","handle":"@아
   }));
 }
 
+// ---- AI: 국제 정세 이벤트 생성 (한국 외 국가들의 능동 행동) ----
+export async function generateWorldEvents(state: GameState, count: number): Promise<WorldEvent[]> {
+  const recentWorld = state.worldEvents.slice(0, 6).map(w => `- [${w.date}] ${w.headline}`).join('\n');
+  const data = await openaiJSON<{ events: any[] }>({
+    apiKey: state.settings.openaiApiKey,
+    model: state.settings.model,
+    temperature: 1.05,
+    maxTokens: 1200,
+    messages: [
+      { role: 'system', content: `당신은 국제정세 시뮬레이터다. 대한민국 외 다른 국가·국제기구·다국적 기업·전쟁 당사자의 능동적 행동을 묘사한다.
+
+[규칙]
+- 대한민국 대통령(${state.president.name})의 발언·행동은 절대 만들지 말 것. 한국은 수동적 관찰자로만.
+- 다른 국가들이 자유롭게 능동적으로 움직인다. 트럼프의 새 정책, 시진핑의 발언, 푸틴의 군사행동, 이시바·이스라엘·이란·EU·NATO·OPEC+ 등.
+- 진행 중 분쟁(러시아-우크라전, 가자, 대만해협, 미중통상, 북한도발)의 새로운 진전 묘사.
+- 각 이벤트는 사실적·구체적. 인물명 정확히 사용.
+- 한국에 직접 영향 없는 이벤트도 다수 포함 (브라질 대선·아프리카 쿠데타·러브라브 분쟁 등).
+
+[기존 국제 이벤트 (중복 회피)]
+${recentWorld || '(없음)'}
+
+[현재 진행 분쟁]
+${state.international.ongoingConflicts.map(c => `- ${c.name} (${c.status}, 강도 ${c.intensity})`).join('\n')}
+
+[주요국 정상]
+${state.countries.slice(0, 30).map(c => `${c.name}: ${c.leader}`).join(', ')}` },
+      { role: 'user', content: `${state.clock.currentDate} 기준, 새로운 국제 정세 이벤트 ${count}개 생성.
+
+JSON: {"events":[{"category":"DIPLOMACY|WAR|ECONOMY|DOMESTIC|TECH|DISASTER|LEADERSHIP|TREATY","headline":"한국 신문 국제면 헤드라인","body":"2~3문장 본문","involvedCountries":["US","CN","..."],"koreaImpact":"NONE|LOW|MED|HIGH"}]}` },
+    ],
+  });
+  return (data.events ?? []).map(e => ({
+    id: genId('we'),
+    date: state.clock.currentDate,
+    category: (e.category ?? 'DIPLOMACY') as any,
+    headline: String(e.headline ?? ''),
+    body: String(e.body ?? ''),
+    involvedCountries: Array.isArray(e.involvedCountries) ? e.involvedCountries : [],
+    koreaImpact: (e.koreaImpact ?? 'LOW') as any,
+  }));
+}
+
 // ---- AI: 뉴스 기사 생성 ----
 export async function generateArticles(state: GameState, count: number): Promise<NewsArticle[]> {
   const mediaIds = state.media.map(m => m.id).join('|');
@@ -252,12 +295,332 @@ export async function resolveEventChoice(
   });
 }
 
+// ---- AI 액션 처리기 ----
+export function applyAIActions(state: GameState, actions: AIAction[] | undefined): { state: GameState; log: string[] } {
+  if (!actions || actions.length === 0) return { state, log: [] };
+  let s = state;
+  const log: string[] = [];
+
+  const VALID_REGIONS = new Set(['SEOUL','BUSAN','DAEGU','INCHEON','GWANGJU','DAEJEON','ULSAN','SEJONG','GYEONGGI','GANGWON','CHUNGBUK','CHUNGNAM','JEONBUK','JEONNAM','GYEONGBUK','GYEONGNAM','JEJU','OFFSHORE','OVERSEAS']);
+
+  for (const act of actions) {
+    try {
+      switch (act.type) {
+        case 'ADD_BUILDING': {
+          const p = act.params || {};
+          const region = (p.region && VALID_REGIONS.has(p.region)) ? p.region : 'SEOUL';
+          const b: Building = {
+            id: genId('bld'),
+            name: String(p.name || '신규 건축물'),
+            category: (p.category || '기타') as any,
+            region,
+            location: String(p.location || ''),
+            builtYear: p.year ?? new Date(s.clock.currentDate).getFullYear(),
+            size: p.size,
+            capacity: p.capacity,
+            status: 'CONSTRUCTING',
+            desc: p.desc,
+            isLandmark: !!p.isLandmark,
+          };
+          s = { ...s, buildings: [b, ...s.buildings] };
+          log.push(`✅ 건축 착공: ${b.name} (${b.location})`);
+          break;
+        }
+        case 'REMOVE_BUILDING': {
+          const m = String(act.params?.nameMatch || '');
+          if (!m) break;
+          const before = s.buildings.length;
+          s = { ...s, buildings: s.buildings.filter(b => !b.name.includes(m)) };
+          log.push(`🗑️ 건축물 ${before - s.buildings.length}개 삭제: "${m}" 매칭`);
+          break;
+        }
+        case 'DECOMMISSION_BUILDING': {
+          const m = String(act.params?.nameMatch || '');
+          if (!m) break;
+          let n = 0;
+          s = { ...s, buildings: s.buildings.map(b => {
+            if (b.name.includes(m) && b.status === 'OPERATING') { n++; return { ...b, status: 'DECOMMISSIONED' as const }; }
+            return b;
+          }) };
+          log.push(`⚠️ 건축물 ${n}개 해체 처리: "${m}" 매칭`);
+          break;
+        }
+        case 'ADD_WEAPON': {
+          const p = act.params || {};
+          const w: WeaponEntry = {
+            id: genId('wpn'),
+            category: (p.category || '기타') as any,
+            name: String(p.name || '신규 무기'),
+            count: Math.max(1, Number(p.count) || 1),
+            origin: String(p.origin || '국산'),
+            status: '도입중',
+            notes: p.notes,
+          };
+          s = { ...s, security: { ...s.security, weapons: [w, ...s.security.weapons] } };
+          log.push(`✅ 무기 도입: ${w.name} ${w.count}기`);
+          break;
+        }
+        case 'REMOVE_WEAPON': {
+          const m = String(act.params?.nameMatch || '');
+          if (!m) break;
+          const before = s.security.weapons.length;
+          s = { ...s, security: { ...s.security, weapons: s.security.weapons.filter(w => !w.name.includes(m)) } };
+          log.push(`🗑️ 무기 ${before - s.security.weapons.length}종 폐기: "${m}"`);
+          break;
+        }
+        case 'ADJUST_WEAPON_COUNT': {
+          const m = String(act.params?.nameMatch || '');
+          const delta = Number(act.params?.delta) || 0;
+          if (!m || !delta) break;
+          let n = 0;
+          s = { ...s, security: { ...s.security, weapons: s.security.weapons.map(w => {
+            if (w.name.includes(m)) { n++; return { ...w, count: Math.max(0, w.count + delta) }; }
+            return w;
+          }) } };
+          log.push(`📊 무기 수량 ${delta > 0 ? '+' : ''}${delta}: "${m}" ${n}종`);
+          break;
+        }
+        case 'ADD_UNIT': {
+          const p = act.params || {};
+          const u: MilitaryUnit = {
+            id: genId('unit'),
+            name: String(p.name || '신규 부대'),
+            echelon: (p.echelon || '여단') as any,
+            service: (p.service || '육군') as any,
+            hq: String(p.hq || ''),
+            personnel: Number(p.personnel) || 1000,
+            notes: p.notes,
+          };
+          s = { ...s, security: { ...s.security, units: [u, ...s.security.units] } };
+          log.push(`✅ 부대 창설: ${u.name}`);
+          break;
+        }
+        case 'REMOVE_UNIT': {
+          const m = String(act.params?.nameMatch || '');
+          if (!m) break;
+          const before = s.security.units.length;
+          s = { ...s, security: { ...s.security, units: s.security.units.filter(u => !u.name.includes(m)) } };
+          log.push(`🗑️ 부대 ${before - s.security.units.length}개 해체: "${m}"`);
+          break;
+        }
+        case 'ADD_BASE': {
+          const p = act.params || {};
+          const region = (p.region && VALID_REGIONS.has(p.region)) ? p.region : 'SEOUL';
+          const b: MilitaryBase = {
+            id: genId('base'),
+            name: String(p.name || '신규 기지'),
+            type: (p.type || '합동') as any,
+            region,
+            location: String(p.location || ''),
+            personnel: Number(p.personnel) || 1000,
+            desc: p.desc,
+          };
+          s = { ...s, security: { ...s.security, bases: [b, ...s.security.bases] } };
+          log.push(`✅ 군사기지 신설: ${b.name}`);
+          break;
+        }
+        case 'REMOVE_BASE': {
+          const m = String(act.params?.nameMatch || '');
+          if (!m) break;
+          const before = s.security.bases.length;
+          s = { ...s, security: { ...s.security, bases: s.security.bases.filter(b => !b.name.includes(m)) } };
+          log.push(`🗑️ 군사기지 ${before - s.security.bases.length}개 폐쇄: "${m}"`);
+          break;
+        }
+        case 'SIGN_TREATY': {
+          const p = act.params || {};
+          const t: Treaty = {
+            id: genId('treaty'),
+            signedAt: s.clock.currentDate,
+            warId: p.warId,
+            name: String(p.name || '평화조약'),
+            parties: Array.isArray(p.parties) ? p.parties : [],
+            victor: (p.victor || 'STALEMATE') as any,
+            summary: String(p.summary || ''),
+            terms: {
+              ceasefire: p.ceasefire !== false,
+              reparationsKRW: Number(p.reparationsKRW) || 0,
+              territorialCession: Array.isArray(p.territorialCession) ? p.territorialCession : undefined,
+              newCountries: Array.isArray(p.newCountries) ? p.newCountries : undefined,
+              annexations: Array.isArray(p.annexations) ? p.annexations : undefined,
+              alliances: p.alliances,
+              sanctionsLifted: p.sanctionsLifted,
+              notes: p.notes,
+            },
+          };
+          // 배상금 → 한국 국고
+          let next = s;
+          if (t.terms.reparationsKRW && t.terms.reparationsKRW !== 0) {
+            next = { ...next, economy: { ...next.economy, treasuryBalanceKRW: Math.round((next.economy.treasuryBalanceKRW + t.terms.reparationsKRW) * 100) / 100 } };
+            log.push(`💰 배상금 ${t.terms.reparationsKRW > 0 ? '수령' : '지불'} ${Math.abs(t.terms.reparationsKRW)}조원`);
+          }
+          // 영토 할양: 해당국 면적·인구·GDP 일부 이전
+          if (t.terms.territorialCession) {
+            for (const c of t.terms.territorialCession) {
+              next = {
+                ...next,
+                countries: next.countries.map(cn => {
+                  if (cn.id === c.fromCountryId) {
+                    const factor = 1 - c.sizePercent / 100;
+                    return {
+                      ...cn,
+                      area: Math.round(cn.area * factor),
+                      population: Math.round(cn.population * factor),
+                      gdpUSD: Math.round(cn.gdpUSD * factor * 10) / 10,
+                      recentEvents: [`${c.description} 할양`, ...cn.recentEvents].slice(0, 5),
+                    };
+                  }
+                  if (cn.id === c.toCountryId) {
+                    const factor = 1 + c.sizePercent / 100 * 0.3;
+                    return {
+                      ...cn,
+                      area: Math.round(cn.area * factor),
+                      recentEvents: [`${c.description} 편입`, ...cn.recentEvents].slice(0, 5),
+                    };
+                  }
+                  return cn;
+                }),
+              };
+              log.push(`🗺️ 영토 할양: ${c.fromCountryId} → ${c.toCountryId} (${c.description}, ${c.sizePercent}%)`);
+            }
+          }
+          // 신규 독립국 추가
+          if (t.terms.newCountries) {
+            for (const nc of t.terms.newCountries) {
+              const parent = next.countries.find(c => c.id === nc.fromCountryId);
+              const newC = {
+                id: 'NEW_' + genId('co').slice(-6).toUpperCase(),
+                name: nc.name, flag: '🏳️',
+                continent: parent?.continent ?? 'ASIA' as const,
+                capital: nc.capital,
+                population: nc.population,
+                area: parent ? Math.round(parent.area * 0.1) : 100,
+                gdpUSD: parent ? Math.round(parent.gdpUSD * 0.1 * 10) / 10 : 10,
+                gdpPerCapita: 5000,
+                leader: '과도 정부 수반', leaderTitle: '대통령', government: '신생 공화국',
+                nuclear: false, unscPermanent: false,
+                hasEmbassyInKorea: false, hasEmbassyInCountry: false,
+                alliance: 'NEUTRAL' as const,
+                relation: nc.initialRelationKorea, trustLevel: 50,
+                tradeVolumeUSD: 0, hasFTA: false, visaFreeKorean: false, koreanResidents: 0,
+                treaties: ['신생국 독립 선언'], recentEvents: [`${nc.fromCountryId}로부터 분리독립`],
+              };
+              next = {
+                ...next,
+                countries: [
+                  newC,
+                  ...next.countries.map(c => c.id === nc.fromCountryId
+                    ? { ...c, area: Math.round(c.area * 0.9), population: Math.round(c.population * 0.85) }
+                    : c),
+                ],
+              };
+              log.push(`🆕 신생 독립국: ${nc.name} (${nc.fromCountryId}으로부터)`);
+            }
+          }
+          // 완전 합병
+          if (t.terms.annexations) {
+            for (const a of t.terms.annexations) {
+              const absorbed = next.countries.find(c => c.id === a.absorbedId);
+              if (absorbed) {
+                next = {
+                  ...next,
+                  countries: next.countries
+                    .filter(c => c.id !== a.absorbedId)
+                    .map(c => c.id === a.absorberId ? {
+                      ...c,
+                      population: c.population + absorbed.population,
+                      area: c.area + absorbed.area,
+                      gdpUSD: Math.round((c.gdpUSD + absorbed.gdpUSD) * 10) / 10,
+                      recentEvents: [`${absorbed.name} 합병`, ...c.recentEvents].slice(0, 5),
+                    } : c),
+                };
+                log.push(`🏴 완전 합병: ${a.absorberId} ← ${a.absorbedId}`);
+              }
+            }
+          }
+          // 동맹 체결
+          if (t.terms.alliances) {
+            next = {
+              ...next,
+              countries: next.countries.map(c =>
+                t.terms.alliances!.includes(c.id)
+                  ? { ...c, alliance: 'ALLY' as const, relation: Math.min(100, c.relation + 15), trustLevel: Math.min(100, c.trustLevel + 10) }
+                  : c),
+            };
+            log.push(`🤝 신규 동맹: ${t.terms.alliances.join(', ')}`);
+          }
+          // 전쟁 종결 처리
+          if (t.warId) {
+            next = {
+              ...next,
+              security: {
+                ...next.security,
+                warEngagements: next.security.warEngagements.filter(w => w.id !== t.warId),
+              },
+            };
+          }
+          next = { ...next, treaties: [t, ...next.treaties] };
+          s = next;
+          log.push(`📜 조약 체결: ${t.name}`);
+          break;
+        }
+        case 'BEGIN_WAR': {
+          const p = act.params || {};
+          s = {
+            ...s,
+            security: {
+              ...s.security,
+              warEngagements: [{
+                id: genId('war'),
+                name: String(p.name || '신규 분쟁'),
+                parties: p.parties || [],
+                koreaRole: (p.koreaRole || 'DIPLOMATIC') as any,
+                startDate: s.clock.currentDate,
+                troopsDeployed: Number(p.troops) || 0,
+                costPerMonth: Number(p.costPerMonth) || 0.5,
+                notes: String(p.notes || ''),
+              }, ...s.security.warEngagements],
+            },
+          };
+          log.push(`⚔️ 전쟁/분쟁 개시: ${p.name}`);
+          break;
+        }
+        case 'END_WAR': {
+          const id = String(act.params?.warId || '');
+          if (!id) break;
+          s = { ...s, security: { ...s.security, warEngagements: s.security.warEngagements.filter(w => w.id !== id) } };
+          log.push(`🕊️ 분쟁 종결: ${id}`);
+          break;
+        }
+        case 'CHANGE_LEADER': {
+          const p = act.params || {};
+          s = {
+            ...s,
+            countries: s.countries.map(c => c.id === p.countryId
+              ? { ...c, leader: String(p.newLeader || c.leader), recentEvents: [`지도자 교체: ${p.newLeader}`, ...c.recentEvents].slice(0, 5) }
+              : c),
+          };
+          log.push(`👤 지도자 교체: ${p.countryId} → ${p.newLeader}`);
+          break;
+        }
+      }
+    } catch (err) {
+      log.push(`⚠️ 액션 실행 실패 (${act.type}): ${(err as Error).message}`);
+    }
+  }
+  return { state: s, log };
+}
+
 export function applyDecisionResult(
   state: GameState,
   result: DecisionResult,
   contextLabel?: string,
 ): GameState {
   let s = applyEffects(state, result.effects);
+
+  // AI 액션 실행
+  const { state: afterActions, log: actionLog } = applyAIActions(s, result.actions);
+  s = afterActions;
 
   const evt: GameEvent = {
     id: genId('evt'),
@@ -301,6 +664,35 @@ export function applyDecisionResult(
     s = { ...s, chat: [...s.chat, msg].slice(-300) };
   }
 
+  // 효과 변화 요약 + 액션 로그를 시스템 메시지로 표시
+  const summaryParts: string[] = [];
+  const eff = result.effects ?? {};
+  if (typeof eff.approval === 'number' && eff.approval !== 0) summaryParts.push(`지지율 ${eff.approval > 0 ? '+' : ''}${eff.approval}p`);
+  if (eff.economy?.kospi !== undefined) summaryParts.push(`코스피 ${eff.economy.kospi > 0 ? '+' : ''}${eff.economy.kospi}`);
+  if (eff.economy?.fxUsdKrw !== undefined) summaryParts.push(`환율 ${eff.economy.fxUsdKrw > 0 ? '+' : ''}${eff.economy.fxUsdKrw}원`);
+  if (eff.economy?.treasuryBalanceKRW !== undefined) summaryParts.push(`국고 ${eff.economy.treasuryBalanceKRW > 0 ? '+' : ''}${eff.economy.treasuryBalanceKRW}조`);
+  if (eff.security?.northKoreaTension !== undefined) summaryParts.push(`北긴장 ${eff.security.northKoreaTension > 0 ? '+' : ''}${eff.security.northKoreaTension}`);
+  if (eff.foreign) {
+    for (const [k, v] of Object.entries(eff.foreign)) {
+      const rel = (v as any)?.relation;
+      if (rel !== undefined && rel !== 0) summaryParts.push(`${k}관계 ${rel > 0 ? '+' : ''}${rel}`);
+    }
+  }
+  if (eff.sns?.sentiment !== undefined && eff.sns.sentiment !== 0) summaryParts.push(`SNS ${eff.sns.sentiment > 0 ? '+' : ''}${eff.sns.sentiment}`);
+
+  const allLogs = [...summaryParts, ...actionLog];
+  if (allLogs.length > 0) {
+    const summary: ChatMessage = {
+      id: genId('msg'),
+      role: 'system',
+      speaker: '게임 엔진',
+      content: `📊 적용된 변화\n${allLogs.map(x => '· ' + x).join('\n')}`,
+      timestamp: s.clock.currentDate,
+      realTimestamp: new Date().toISOString(),
+    };
+    s = { ...s, chat: [...s.chat, summary].slice(-300) };
+  }
+
   return s;
 }
 
@@ -311,10 +703,11 @@ export async function advanceTurn(state: GameState, days = 7): Promise<GameState
   if (s.settings.autoEvents && s.settings.openaiApiKey) {
     // 병렬로 이벤트·SNS·기사 생성
     try {
-      const [events, posts, articles] = await Promise.allSettled([
+      const [events, posts, articles, worldEvents] = await Promise.allSettled([
         generateEvents(s, s.settings.eventsPerTurn),
         generateSnsPosts(s, Math.min(8, days + 2)),
         generateArticles(s, Math.min(6, days + 1)),
+        generateWorldEvents(s, Math.min(4, Math.ceil(days / 2))),
       ]);
 
       if (events.status === 'fulfilled') {
@@ -329,6 +722,9 @@ export async function advanceTurn(state: GameState, days = 7): Promise<GameState
       }
       if (articles.status === 'fulfilled') {
         s = { ...s, articles: [...articles.value, ...s.articles].slice(0, 150) };
+      }
+      if (worldEvents.status === 'fulfilled') {
+        s = { ...s, worldEvents: [...worldEvents.value, ...s.worldEvents].slice(0, 60) };
       }
     } catch (err) {
       console.error('자동 생성 실패', err);

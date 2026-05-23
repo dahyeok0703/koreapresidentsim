@@ -398,7 +398,7 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
   const jud = INITIAL_JUDICIARY;
 
   return {
-    version: 9,
+    version: 10,
     createdAt: new Date().toISOString(),
     president: { ...p, termEndsAt: termEndStr },
     clock: { currentDate: date, daysInOffice: 0, turnNumber: 1, speed: 'paused' },
@@ -464,6 +464,44 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
     elections: buildElections(2025, 2075),
     cultural: INITIAL_CULTURAL,
     pastTerms: [],
+    worldEvents: [
+      {
+        id: genId('we'), date: '2025-06-02',
+        category: 'DIPLOMACY' as const,
+        headline: '트럼프, 한국·일본·EU에 추가 관세 카드 시사',
+        body: '미국 트럼프 대통령이 "동맹국이라도 무역 흑자국엔 관세를 부과할 수 있다"고 발언. 한국 자동차·반도체 직접 타격 우려.',
+        involvedCountries: ['US','KR','JP','EU'], koreaImpact: 'HIGH' as const,
+      },
+      {
+        id: genId('we'), date: '2025-06-01',
+        category: 'WAR' as const,
+        headline: '러시아-우크라이나 휴전 협상 답보',
+        body: '트럼프가 중재한 휴전 협상이 영토 인정 문제로 답보. 러시아는 동부 4개 주 점유 확정을, 우크라이나는 2022년 이전 국경 회복을 요구.',
+        involvedCountries: ['RU','UA','US'], koreaImpact: 'LOW' as const,
+      },
+      {
+        id: genId('we'), date: '2025-05-30',
+        category: 'TECH' as const,
+        headline: 'EU, AI 규제법(AI Act) 시행 본격화',
+        body: '유럽 27개국에서 고위험 AI 시스템 규제 의무 발효. 한국 IT 기업 EU 진출 시 컴플라이언스 부담.',
+        involvedCountries: ['EU'], koreaImpact: 'MED' as const,
+      },
+      {
+        id: genId('we'), date: '2025-05-28',
+        category: 'DIPLOMACY' as const,
+        headline: '중국, 대만해협서 군사훈련 — 항모 산둥함 출항',
+        body: '중국 인민해방군 동부전구가 대만 주변 해역에서 대규모 군사훈련. 대만은 비상경계.',
+        involvedCountries: ['CN','TW','US','JP'], koreaImpact: 'MED' as const,
+      },
+      {
+        id: genId('we'), date: '2025-05-25',
+        category: 'DOMESTIC' as const,
+        headline: '일본, 자위대 예산 GDP 2% 달성 — 안보 정책 전환',
+        body: '이시바 내각이 자위대 예산을 GDP 2%로 끌어올림. 반격능력 보유 본격화.',
+        involvedCountries: ['JP'], koreaImpact: 'MED' as const,
+      },
+    ],
+    treaties: [],
   };
 }
 
@@ -543,7 +581,7 @@ export function buildNewTermState(
 
   return {
     ...prev,
-    version: 9,
+    version: 10,
     president: newPresident,
     clock: { currentDate: startDate, daysInOffice: 0, turnNumber: 1, speed: 'paused' },
     approval: buildApproval(newProfile.party, baseApproval),
@@ -585,6 +623,8 @@ export function buildNewTermState(
       initJudiciaryTrust: jud.supremeCourt.publicTrust,
       termStartDate: startDate,
     },
+    worldEvents: prev.worldEvents.slice(0, 10),  // 최근 10개 인수
+    treaties: prev.treaties,
     // 유지: countries, companies, intlOrgs, international, adminBodies, buildings, parties, regions, elections, cultural, pastTerms, settings
   };
 }
