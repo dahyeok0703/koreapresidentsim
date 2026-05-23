@@ -2,6 +2,7 @@ import type { GameState, PartialEffects, ApprovalBreakdown, Bill, GameEvent } fr
 import type { Sector } from '../data/companies';
 import { ALL_BILL_TEMPLATES, AUTONOMOUS_ACTIONS } from '../data/bills';
 import { genId } from '../utils/id';
+import { buildTermEvaluation } from './evaluation';
 
 // 섹터별 코스피 베타 (시장 대비 변동성)
 const SECTOR_BETA: Record<Sector, number> = {
@@ -291,7 +292,67 @@ function advanceOneDay(state: GameState): GameState {
   // === 자율 행정 (며칠마다 한 번씩 부처/지자체 자체 조치) ===
   s = processAutonomousActions(s, newDate);
 
+  // === 선거 발생 처리 ===
+  s = processElections(s, newDate);
+
+  // === 임기 종료 감지 → 평가표 생성 ===
+  s = processTermEnd(s, newDate);
+
   return s;
+}
+
+// ---------------- 선거 이벤트 발생 ----------------
+function processElections(state: GameState, today: string): GameState {
+  const newlyOccurred = state.elections.filter(e => !e.occurred && e.date <= today);
+  if (newlyOccurred.length === 0) return state;
+  const updated = state.elections.map(e =>
+    !e.occurred && e.date <= today ? { ...e, occurred: true } : e);
+  const newEvents: GameEvent[] = newlyOccurred.map(e => ({
+    id: genId('evt'),
+    date: today,
+    category: 'POLITICS' as const,
+    severity: e.type === 'PRESIDENTIAL' ? 'CRITICAL' : 'MAJOR' as const,
+    headline: `[선거] ${e.name} 실시`,
+    body: `${e.date} ${e.name}이(가) 전국 동시에 실시됐다. ${e.desc}`,
+    source: '중앙선거관리위원회',
+    resolved: true,
+  }));
+  return { ...state, elections: updated, events: [...newEvents, ...state.events].slice(0, 200) };
+}
+
+// ---------------- 임기 종료 감지 ----------------
+function processTermEnd(state: GameState, today: string): GameState {
+  if (state.flags.termEnded) return state;
+  const end = state.president.termEndsAt;
+  if (!end || today < end) return state;
+  // 평가표 생성
+  const evalReport = buildTermEvaluation(state, {
+    approval: Number(state.flags.initApproval) || 55,
+    kospi: Number(state.flags.initKospi) || 2735,
+    fxUsdKrw: Number(state.flags.initFxKrw) || 1378,
+    treasuryKRW: Number(state.flags.initTreasury) || 42.8,
+    birthRate: Number(state.flags.initBirthRate) || 0.75,
+    suicideRate: Number(state.flags.initSuicide) || 25.2,
+    nkTension: Number(state.flags.initNkTension) || 62,
+    usAlliance: Number(state.flags.initUsAlliance) || 80,
+    judiciaryTrust: Number(state.flags.initJudiciaryTrust) || 48,
+  });
+  const endEvent: GameEvent = {
+    id: genId('evt'),
+    date: today,
+    category: 'POLITICS',
+    severity: 'CRITICAL',
+    headline: `[임기 종료] ${state.president.name} 대통령 5년 임기 만료`,
+    body: `${state.president.inauguratedAt}에 취임한 ${state.president.name} 대통령의 5년 임기가 ${today}로 만료됐다. 국정운영 평가표가 공개됐다.`,
+    source: '청와대',
+    resolved: true,
+  };
+  return {
+    ...state,
+    flags: { ...state.flags, termEnded: true, lastEvalGrade: evalReport.grade },
+    pastTerms: [...state.pastTerms, evalReport],
+    events: [endEvent, ...state.events].slice(0, 200),
+  };
 }
 
 // ---------------- 국회 자동 법안 ----------------

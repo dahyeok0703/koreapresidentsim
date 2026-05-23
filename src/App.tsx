@@ -7,6 +7,7 @@ import ChatPanel from './components/ChatPanel';
 import RightTabs from './components/RightTabs';
 import EventChoiceModal from './components/EventChoiceModal';
 import PresidentCard from './components/PresidentCard';
+import TermEvalModal from './components/TermEvalModal';
 
 export default function App() {
   const state = useGame(s => s.state);
@@ -38,6 +39,7 @@ export default function App() {
         </div>
       </div>
       <EventChoiceModal />
+      <TermEvalModal />
     </div>
   );
 }

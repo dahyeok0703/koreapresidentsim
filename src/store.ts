@@ -5,7 +5,7 @@ import type {
   WarEngagement, AdminTask
 } from './types/game';
 import { saveCurrent, loadCurrent } from './db/storage';
-import { genId, randomKoreanName, NOMINEE_POOL } from './data/initialState';
+import { genId, randomKoreanName, NOMINEE_POOL, buildNewTermState } from './data/initialState';
 import { MINISTRY_NAMES } from './data/ministries';
 import {
   advanceTurn, askAdvisor, evaluateDecision, applyDecisionResult, resolveEventChoice,
@@ -70,6 +70,10 @@ interface UIState {
   // 국회 법안
   vetoBill: (billId: string) => void;
   letBillProceed: (billId: string) => void;
+
+  // 차기 임기 시작 (5년 임기 종료 후)
+  beginNewTerm: (profile: import('./types/game').PresidentProfile) => void;
+  dismissTermEvaluation: () => void;
 }
 
 export const useGame = create<UIState>((set, get) => ({
@@ -83,7 +87,7 @@ export const useGame = create<UIState>((set, get) => ({
 
   hydrate() {
     const s = loadCurrent();
-    if (s && (s.version ?? 0) >= 8) set({ state: s });
+    if (s && (s.version ?? 0) >= 9) set({ state: s });
     else if (s) { localStorage.removeItem('kps-current'); }
   },
 
@@ -559,6 +563,18 @@ export const useGame = create<UIState>((set, get) => ({
         } as GameEvent, ...next.events].slice(0, 200),
       };
     });
+  },
+
+  beginNewTerm(profile) {
+    const s = get().state;
+    if (!s) return;
+    const next = buildNewTermState(s, profile);
+    set({ state: next });
+    saveCurrent(next);
+  },
+
+  dismissTermEvaluation() {
+    get().patch(s => ({ ...s, flags: { ...s.flags, evalAcknowledged: true } }));
   },
 
   letBillProceed(billId) {

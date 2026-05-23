@@ -16,6 +16,8 @@ import { INITIAL_BUILDINGS } from './buildings';
 import { INITIAL_WEAPONS, INITIAL_BASES, INITIAL_UNITS } from './military';
 import { buildInitialArticles } from './articles';
 import { ADMIN_BODIES, INITIAL_ADMIN_TASKS, NOMINEE_POOL } from './adminBodies';
+import { buildElections } from './elections';
+import { INITIAL_CULTURAL } from './cultural';
 import { genId, randomKoreanName } from '../utils/id';
 export { genId, randomKoreanName };
 
@@ -383,22 +385,34 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
     ],
   };
 
+  // 임기 만료일 계산: 취임일 + 5년 - 1일
+  const inaug = new Date(p.inauguratedAt);
+  const termEnd = new Date(inaug);
+  termEnd.setFullYear(termEnd.getFullYear() + 5);
+  termEnd.setDate(termEnd.getDate() - 1);
+  const termEndStr = termEnd.toISOString().slice(0, 10);
+
+  const econ = buildEconomy();
+  const sec = buildSecurity();
+  const soc = buildSocial();
+  const jud = INITIAL_JUDICIARY;
+
   return {
-    version: 8,
+    version: 9,
     createdAt: new Date().toISOString(),
-    president: p,
+    president: { ...p, termEndsAt: termEndStr },
     clock: { currentDate: date, daysInOffice: 0, turnNumber: 1, speed: 'paused' },
     approval: buildApproval(p.party, baseApproval),
     regions: REGIONS,
-    economy: buildEconomy(),
-    social: buildSocial(),
-    security: buildSecurity(),
+    economy: econ,
+    social: soc,
+    security: sec,
     countries: COUNTRIES,
     companies: COMPANIES,
     intlOrgs: INTL_ORGS,
     international: { ...INITIAL_INTERNATIONAL },
     assembly: buildAssembly(p.party),
-    judiciary: { ...INITIAL_JUDICIARY },
+    judiciary: { ...jud },
     adminBodies: ADMIN_BODIES,
     cabinet: buildEmptyCabinet(date),
     adminTasks: buildAdminTasks(date),
@@ -433,8 +447,144 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
       eventsPerTurn: 3,
       language: 'ko',
     },
-    flags: { cabinetSetupComplete: false },
+    flags: {
+      cabinetSetupComplete: false,
+      // 임기 시작 시점 지표 (평가 산출용)
+      initApproval: baseApproval,
+      initKospi: econ.kospi,
+      initFxKrw: econ.fxUsdKrw,
+      initTreasury: econ.treasuryBalanceKRW,
+      initBirthRate: soc.birthRate,
+      initSuicide: soc.suicideRate,
+      initNkTension: sec.northKoreaTension,
+      initUsAlliance: sec.usAllianceStrength,
+      initJudiciaryTrust: jud.supremeCourt.publicTrust,
+      termStartDate: date,
+    },
+    elections: buildElections(2025, 2075),
+    cultural: INITIAL_CULTURAL,
+    pastTerms: [],
   };
 }
 
 export { NOMINEE_POOL };
+
+// =============================================================
+// 차기 임기 시작 (5년 임기 종료 후 새 캐릭터로 이어감)
+// 장기 누적 상태(경제·사회·외교·인프라·기업·국제기구 등)는 유지하고
+// 대통령 개인 관련 상태(인선·채팅·행정업무·지지율·이벤트 등)만 리셋.
+// =============================================================
+export function buildNewTermState(
+  prev: GameState,
+  newProfile: PresidentProfile,
+): GameState {
+  // 새 임기 시작일 = 이전 임기 만료일 + 1일
+  const startDate = (() => {
+    const d = new Date(prev.president.termEndsAt);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  // 새 임기 만료일 = 시작일 + 5년 - 1일
+  const endDate = (() => {
+    const d = new Date(startDate);
+    d.setFullYear(d.getFullYear() + 5);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  const newPresident: PresidentProfile = {
+    ...newProfile,
+    inauguratedAt: startDate,
+    termEndsAt: endDate,
+    termNumber: (prev.president.termNumber ?? 21) + 1,
+  };
+  const baseApproval = 55;
+
+  // 임기 만료 시 이전 자체적인 변화를 반영하기 위해 일부 사회·경제 지표는 유지하되,
+  // 새 정부 효과로 일부 회복 (소비심리·기업심리·SNS 정서 약간)
+  const econ = { ...prev.economy };
+  econ.consumerConfidence = Math.min(200, econ.consumerConfidence + 4);
+  econ.businessConfidence = Math.min(200, econ.businessConfidence + 4);
+  econ.history = econ.history.slice(-10); // 최근만 유지
+  econ.lastMonthlyReset = startDate.slice(0, 8) + '01';
+  econ.monthlyExportUSD = 0;
+  econ.monthlyImportUSD = 0;
+  econ.monthlyTradeBalanceUSD = 0;
+
+  // 사회 지표는 그대로 유지 (출산율·자살률·갈등 등은 누적)
+  const soc = { ...prev.social };
+
+  // 안보: 유지 (북한·동맹 관계는 누적)
+  const sec = {
+    ...prev.security,
+    warEngagements: prev.security.warEngagements, // 진행중 분쟁은 그대로
+  };
+
+  // 국회·사법부: 유지 (탄핵 누계는 새 임기에서 리셋하는 게 합리적)
+  const assembly = {
+    ...prev.assembly,
+    impeachmentMotions: 0,
+    filibusterDays: 0,
+    pendingBills: [], // 신임 대통령 출범 → 모든 계류 법안 폐기
+  };
+
+  const jud = { ...prev.judiciary };
+
+  const inaugEvent = {
+    id: genId('evt'),
+    date: startDate,
+    category: 'POLITICS' as const,
+    severity: 'CRITICAL' as const,
+    headline: `제${newPresident.termNumber}대 ${newPresident.name} 대통령 취임… "${newPresident.slogan}"`,
+    body: `이전 대통령 ${prev.president.name}의 임기 만료에 따라 ${newPresident.name} 신임 대통령이 ${startDate} 정식 취임했다. 5년 임기를 시작한다.`,
+    source: 'KBS',
+    resolved: true,
+  };
+
+  return {
+    ...prev,
+    version: 9,
+    president: newPresident,
+    clock: { currentDate: startDate, daysInOffice: 0, turnNumber: 1, speed: 'paused' },
+    approval: buildApproval(newProfile.party, baseApproval),
+    economy: econ,
+    social: soc,
+    security: sec,
+    assembly,
+    judiciary: jud,
+    cabinet: buildEmptyCabinet(startDate),
+    adminTasks: buildAdminTasks(startDate),
+    media: prev.media.map(m => ({
+      ...m,
+      favorToPresident: Math.round(-m.bias * newProfile.ideology / 100),
+    })),
+    articles: [],
+    sns: { ...prev.sns, recentPosts: [], sentimentScore: Math.round(-newProfile.ideology * 0.1) },
+    events: [inaugEvent],
+    chat: [{
+      id: genId('msg'),
+      role: 'advisor' as const,
+      speaker: '비서실장',
+      content: `대통령님. 새로운 시작입니다.\n전임 ${prev.president.name} 대통령의 임기가 어제 만료됐습니다.\n\n오늘 ${startDate}, ${newPresident.name} 제${newPresident.termNumber}대 대통령으로서 새 5년이 시작됩니다.\n\n전임이 남긴 자산과 부담을 그대로 인수합니다. 첫 결재가 곧 올라옵니다.`,
+      timestamp: startDate,
+      realTimestamp: new Date().toISOString(),
+      contextType: 'BRIEFING' as const,
+    }],
+    policies: [],
+    flags: {
+      cabinetSetupComplete: false,
+      termEnded: false,
+      initApproval: baseApproval,
+      initKospi: econ.kospi,
+      initFxKrw: econ.fxUsdKrw,
+      initTreasury: econ.treasuryBalanceKRW,
+      initBirthRate: soc.birthRate,
+      initSuicide: soc.suicideRate,
+      initNkTension: sec.northKoreaTension,
+      initUsAlliance: sec.usAllianceStrength,
+      initJudiciaryTrust: jud.supremeCourt.publicTrust,
+      termStartDate: startDate,
+    },
+    // 유지: countries, companies, intlOrgs, international, adminBodies, buildings, parties, regions, elections, cultural, pastTerms, settings
+  };
+}

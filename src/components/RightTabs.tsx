@@ -21,6 +21,8 @@ const TABS = [
   { id: 'REGIONS',      label: '행정구역', icon: '🗺️' },
   { id: 'INFRA',        label: '토건',     icon: '🏗️' },
   { id: 'COMPANIES',    label: '기업',     icon: '🏭' },
+  { id: 'CULTURE',      label: '문화',     icon: '🎭' },
+  { id: 'ELECTIONS',    label: '선거',     icon: '🗳️' },
   { id: 'EVENTS',       label: '사건',     icon: '📜' },
   { id: 'INTL',         label: '국제',     icon: '🌍' },
   { id: 'MEDIA',        label: '언론',     icon: '📰' },
@@ -58,6 +60,8 @@ export default function RightTabs() {
         {tab === 'REGIONS'   && <RegionsTab />}
         {tab === 'INFRA'     && <InfraTab />}
         {tab === 'COMPANIES' && <CompaniesTab />}
+        {tab === 'CULTURE'   && <CultureTab />}
+        {tab === 'ELECTIONS' && <ElectionsTab />}
         {tab === 'EVENTS'    && <EventsTab />}
         {tab === 'INTL'      && <IntlTab />}
         {tab === 'MEDIA'     && <MediaTab />}
@@ -1319,6 +1323,177 @@ function CompaniesTab() {
             </div>
           ));
         })()}
+      </Panel>
+    </>
+  );
+}
+
+// ============ 문화 ============
+function CultureTab() {
+  const c = useGame(s => s.state!.cultural);
+  return (
+    <>
+      <Panel title="한류·K-콘텐츠 글로벌">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+          <Stat label="한류 종합지수"       value={`${c.hallyu.overallIndex}/100`} color="text-amber-300" />
+          <Stat label="K-POP 음반 수출"     value={`$${c.hallyu.musicExportUSD}M`} />
+          <Stat label="콘텐츠 수출 총"      value={`$${fmtInt(c.hallyu.contentExportUSD)}M`} />
+          <Stat label="해외 한국어 학습자"  value={`${fmtInt(c.hallyu.foreignKoreanLearners)}만명`} />
+          <Stat label="세종학당·문화원"     value={`${c.hallyu.overseasKoreanCenters}곳`} />
+          <Stat label="Netflix 한국 점유"   value={fmtPct(c.hallyu.netflixKoreanShare)} />
+        </div>
+      </Panel>
+      <Panel title="UNESCO 등재">
+        <Stat label="세계유산"       value={`${c.unesco.worldHeritageCount}건`} />
+        <Stat label="인류무형유산"   value={`${c.unesco.intangibleHeritageCount}건`} />
+        <Stat label="세계기록유산"   value={`${c.unesco.memoryOfWorldCount}건`} />
+        <div className="text-[10px] text-slate-500 mt-1">최근 등재</div>
+        <ul className="text-[11px] text-slate-300 space-y-0.5">
+          {c.unesco.recentRegistrations.map((r, i) => <li key={i}>· {r}</li>)}
+        </ul>
+      </Panel>
+      <Panel title="영화·OTT">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+          <Stat label="연 관객수"           value={`${fmtInt(c.domesticContent.movieAnnualAudience)}만명`} />
+          <Stat label="박스오피스"          value={`₩${fmtInt(c.domesticContent.boxOfficeBillionKRW)}10억`} />
+          <Stat label="한국영화 점유율"     value={fmtPct(c.domesticContent.koreanMovieShare)} />
+          <Stat label="Netflix"             value={`${fmtInt(c.domesticContent.netflixSubscribers)}만`} />
+          <Stat label="TVING"               value={`${fmtInt(c.domesticContent.tvingSubscribers)}만`} />
+          <Stat label="Wavve"               value={`${fmtInt(c.domesticContent.wavveSubscribers)}만`} />
+        </div>
+        <div className="text-[10px] text-slate-500 mt-2">주요 영화감독</div>
+        <ul className="text-[11px] text-slate-300 space-y-0.5">
+          {c.notableDirectors.map((d, i) => <li key={i}>· {d}</li>)}
+        </ul>
+      </Panel>
+      <Panel title="음악">
+        <Stat label="국내 음악 시장"  value={`₩${fmtInt(c.music.domesticAnnualSalesBillionKRW)}10억`} />
+        <Stat label="멜론 MAU"        value={`${c.music.melonMauMillion}백만`} />
+        <div className="text-[10px] text-slate-500 mt-2">대표 K-POP 그룹</div>
+        <div className="grid grid-cols-2 gap-1 mt-1">
+          {c.music.topGroups.map((g, i) => (
+            <div key={i} className="bg-slate-950/40 border border-slate-800 rounded p-1 text-[10px]">
+              <div className="text-slate-200 font-semibold">{g.name}</div>
+              <div className="text-slate-500">{g.agency} · {g.debut}</div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+      <Panel title="게임·웹툰·이스포츠">
+        <Stat label="게임 산업 매출"   value={`$${c.games.industryRevenueBillionUSD}B`} />
+        <Stat label="웹툰 매출"        value={`₩${fmtInt(c.games.webtoonRevenueBillionKRW)}10억`} />
+        <Stat label="이스포츠 세계랭킹" value={`${c.games.globalEsportsRanking}위`} color="text-amber-300" />
+        <div className="text-[10px] text-slate-500 mt-1">대표 퍼블리셔</div>
+        <div className="text-[11px] text-slate-300">{c.games.topPublishers.join(' · ')}</div>
+      </Panel>
+      <Panel title="스포츠">
+        <div className="grid grid-cols-3 gap-x-3 gap-y-1">
+          <Stat label="🥇" value={`${c.sports.olympicGoldRecord}`} />
+          <Stat label="🥈" value={`${c.sports.olympicSilverRecord}`} />
+          <Stat label="🥉" value={`${c.sports.olympicBronzeRecord}`} />
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
+          <Stat label="KBO 관중"        value={`${c.sports.kboAttendanceMillions}백만`} />
+          <Stat label="K리그 관중"      value={`${c.sports.kleagueAttendanceMillions}백만`} />
+          <Stat label="FIFA 랭킹"       value={`${c.sports.fifaRanking}위`} />
+          <Stat label="국기"            value={c.sports.nationalSports} />
+        </div>
+      </Panel>
+      <Panel title="출판·도서">
+        <Stat label="독서율"           value={fmtPct(c.publishing.annualReadingRate)} />
+        <Stat label="연간 출판"        value={`${c.publishing.booksPublishedAnnually}만권`} />
+        <Stat label="도서관 수"        value={`${fmtInt(c.publishing.librariesNationwide)}개`} />
+      </Panel>
+      <Panel title="종교 분포">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+          <Stat label="무교"   value={fmtPct(c.religion.none)} />
+          <Stat label="개신교" value={fmtPct(c.religion.protestant)} />
+          <Stat label="천주교" value={fmtPct(c.religion.catholic)} />
+          <Stat label="불교"   value={fmtPct(c.religion.buddhist)} />
+          <Stat label="기타"   value={fmtPct(c.religion.other)} />
+        </div>
+      </Panel>
+      <Panel title="문화 인프라·예산">
+        <Stat label="박물관·미술관" value={`${fmtInt(c.museums)}곳`} />
+        <Stat label="도서관"        value={`${fmtInt(c.libraries)}곳`} />
+        <Stat label="공연장"        value={`${fmtInt(c.performanceVenues)}곳`} />
+        <Stat label="문체부 예산"   value={`₩${c.culturalBudgetKRW}조`} />
+        <div className="text-[10px] text-slate-500 mt-2">언어</div>
+        <Stat label="표준어"        value={c.language.standardName} />
+        <Stat label="활동 방언"     value={`${c.language.activeDialects}개`} />
+        <Stat label="한글날"        value={c.language.hangulDay} />
+      </Panel>
+    </>
+  );
+}
+
+// ============ 선거 일정 ============
+function ElectionsTab() {
+  const elections = useGame(s => s.state!.elections);
+  const today = useGame(s => s.state!.clock.currentDate);
+  const pastTerms = useGame(s => s.state!.pastTerms);
+  const upcoming = elections.filter(e => !e.occurred && e.date >= today).slice(0, 30);
+  const past = elections.filter(e => e.occurred).slice(-15).reverse();
+
+  const typeLabel = (t: string) => ({
+    PRESIDENTIAL: '🇰🇷 대선', GENERAL: '🏛️ 총선', LOCAL: '🗳️ 지선',
+    BY: '🔁 재보궐', REFERENDUM: '📜 국민투표',
+  } as any)[t] ?? t;
+  const typeColor = (t: string) => ({
+    PRESIDENTIAL: 'text-red-300 border-red-700 bg-red-900/30',
+    GENERAL: 'text-blue-300 border-blue-700 bg-blue-900/30',
+    LOCAL: 'text-emerald-300 border-emerald-700 bg-emerald-900/30',
+  } as any)[t] ?? 'text-slate-300';
+
+  return (
+    <>
+      <Panel title={`예정된 선거 (${upcoming.length})`}>
+        {upcoming.length === 0 && <div className="text-[11px] text-slate-500 text-center py-2">예정된 선거가 없습니다.</div>}
+        <div className="space-y-1">
+          {upcoming.map(e => {
+            const daysLeft = Math.floor((new Date(e.date).getTime() - new Date(today).getTime()) / 86400000);
+            return (
+              <div key={e.id} className="bg-slate-950/40 border border-slate-800 rounded p-2">
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded border ${typeColor(e.type)}`}>{typeLabel(e.type)}</span>
+                  <span className="text-[10px] text-slate-400">{e.date} · D-{daysLeft}</span>
+                </div>
+                <div className="text-xs font-semibold text-slate-100">{e.name}</div>
+                <div className="text-[10px] text-slate-400">{e.desc}</div>
+              </div>
+            );
+          })}
+        </div>
+      </Panel>
+      <Panel title="과거 임기 평가">
+        {pastTerms.length === 0
+          ? <div className="text-[11px] text-slate-500 text-center py-2">아직 종료된 임기가 없습니다.</div>
+          : pastTerms.map(t => (
+            <div key={t.startDate} className="bg-slate-950/40 border border-slate-800 rounded p-2 mb-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold">제{t.termNumber}대 {t.president.name}</span>
+                <span className={`text-lg font-bold ${
+                  t.grade === 'S' ? 'text-yellow-300' : t.grade === 'A' ? 'text-emerald-300' :
+                  t.grade === 'B' ? 'text-lime-300' : t.grade === 'C' ? 'text-blue-300' :
+                  t.grade === 'D' ? 'text-orange-300' : 'text-red-300'}`}>{t.grade}</span>
+              </div>
+              <div className="text-[10px] text-slate-500">{t.startDate} ~ {t.endDate} · {t.president.party} · 점수 {t.totalScore.toFixed(1)}/100</div>
+              <div className="text-[10px] text-slate-300 mt-0.5">{t.finalNote}</div>
+            </div>
+          ))}
+      </Panel>
+      <Panel title={`최근 실시된 선거 (${past.length})`}>
+        <div className="space-y-1">
+          {past.map(e => (
+            <div key={e.id} className="bg-slate-950/30 border border-slate-800 rounded p-1.5 text-xs opacity-80">
+              <div className="flex items-center justify-between text-[10px]">
+                <span className={`px-1.5 py-0.5 rounded border ${typeColor(e.type)}`}>{typeLabel(e.type)}</span>
+                <span className="text-slate-500">{e.date} ✓</span>
+              </div>
+              <div className="text-slate-200">{e.name}</div>
+            </div>
+          ))}
+        </div>
       </Panel>
     </>
   );

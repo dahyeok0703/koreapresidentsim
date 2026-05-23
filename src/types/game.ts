@@ -744,4 +744,121 @@ export interface GameState {
   parties: Party[];
   settings: Settings;
   flags: Record<string, boolean | number | string>;
+  elections: Election[];
+  cultural: CulturalState;
+  pastTerms: TermEvaluation[];
+}
+
+// ---------------- 선거 ----------------
+export type ElectionType = 'PRESIDENTIAL' | 'GENERAL' | 'LOCAL' | 'BY' | 'REFERENDUM';
+
+export interface Election {
+  id: string;
+  date: string;
+  type: ElectionType;
+  name: string;
+  desc: string;
+  occurred?: boolean;
+  result?: string;
+}
+
+// ---------------- 문화 지표 ----------------
+export interface CulturalState {
+  hallyu: {
+    overallIndex: number;
+    musicExportUSD: number;
+    contentExportUSD: number;
+    foreignKoreanLearners: number;
+    overseasKoreanCenters: number;
+    netflixKoreanShare: number;
+  };
+  unesco: {
+    worldHeritageCount: number;
+    intangibleHeritageCount: number;
+    memoryOfWorldCount: number;
+    recentRegistrations: string[];
+  };
+  domesticContent: {
+    movieAnnualAudience: number;
+    boxOfficeBillionKRW: number;
+    netflixSubscribers: number;
+    tvingSubscribers: number;
+    wavveSubscribers: number;
+    koreanMovieShare: number;
+  };
+  music: {
+    domesticAnnualSalesBillionKRW: number;
+    topGroups: { name: string; agency: string; debut: string }[];
+    melonMauMillion: number;
+  };
+  publishing: {
+    annualReadingRate: number;
+    booksPublishedAnnually: number;
+    librariesNationwide: number;
+  };
+  sports: {
+    olympicGoldRecord: number;
+    olympicSilverRecord: number;
+    olympicBronzeRecord: number;
+    kboAttendanceMillions: number;
+    kleagueAttendanceMillions: number;
+    fifaRanking: number;
+    nationalSports: string;
+  };
+  games: {
+    industryRevenueBillionUSD: number;
+    globalEsportsRanking: number;
+    topPublishers: string[];
+    webtoonRevenueBillionKRW: number;
+  };
+  religion: {
+    none: number;
+    protestant: number;
+    catholic: number;
+    buddhist: number;
+    other: number;
+  };
+  language: {
+    standardName: string;
+    activeDialects: number;
+    hangulDay: string;
+  };
+  museums: number;
+  libraries: number;
+  performanceVenues: number;
+  culturalBudgetKRW: number;
+  notableArtists: string[];
+  notableDirectors: string[];
+}
+
+// ---------------- 임기 평가 ----------------
+export interface TermEvaluation {
+  president: { name: string; party: string; ideology: number };
+  termNumber: number;
+  startDate: string;
+  endDate: string;
+  metrics: {
+    finalApproval: number;
+    avgApproval: number;
+    peakApproval: number;
+    troughApproval: number;
+    gdpGrowthAvg: number;
+    kospiChange: number;
+    fxKrwChange: number;
+    treasuryChange: number;
+    birthRateChange: number;
+    suicideRateChange: number;
+    nkTensionAvg: number;
+    usAllianceChange: number;
+    billsPassed: number;
+    billsVetoed: number;
+    impeachmentMotions: number;
+    judiciaryTrustChange: number;
+    snsSentimentAvg: number;
+  };
+  grade: 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
+  totalScore: number;
+  highlights: string[];
+  failures: string[];
+  finalNote: string;
 }
