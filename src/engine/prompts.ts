@@ -269,6 +269,9 @@ ${EFFECTS_SCHEMA_INSTRUCTION}
 
 actions: [
   // 건축물 추가 (대통령이 "X 건설" "Y 착공" 등을 지시할 때)
+  // 착공 직후 status=CONSTRUCTING으로 등록되고, expectedCompletion 일자가 지나면 자동 OPERATING.
+  // constructionDays 또는 expectedCompletion(YYYY-MM-DD) 둘 중 하나 명시 가능. 미지정 시 카테고리 기본값 사용.
+  // (참고 기본값: 주거 3년·상업 2년·공업 1.5년·교통 5년·에너지 8년·수자원 7년·교육 1년·의료 2년·연구 3년·우주 6년)
   { "type": "ADD_BUILDING", "params": {
       "name": "신규 빌딩명",
       "category": "주거|상업|공업|교통|에너지|수자원|국방|교육|의료|문화|연구|농수산|관광|해양|우주|기타",
@@ -276,7 +279,9 @@ actions: [
       "location": "위치 텍스트 (예: 서울 강남구)",
       "size": "30층×8동 같은 규모 설명",
       "desc": "설명",
-      "isLandmark": false
+      "isLandmark": false,
+      "constructionDays": 730,                       // 선택. 공기 일수
+      "expectedCompletion": "2028-06-30"             // 선택. 명시적 완공일 (constructionDays보다 우선)
   } },
   // 건축물 영구 삭제 (이름 매칭, "X 철거" "Y 폭파")
   { "type": "REMOVE_BUILDING", "params": { "nameMatch": "건물명 일부" } },

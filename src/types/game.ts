@@ -625,6 +625,8 @@ export interface Building {
   cost?: number;          // 억원
   desc?: string;
   isLandmark?: boolean;
+  startedAt?: string;          // 착공일 (YYYY-MM-DD)
+  expectedCompletion?: string; // 예정 완공일 (YYYY-MM-DD), 이 시점 지나면 자동 OPERATING
 }
 
 // ---------------- 이벤트 ----------------

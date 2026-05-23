@@ -302,7 +302,41 @@ function advanceOneDay(state: GameState): GameState {
   // === 외국 정상 임기 자동 교체 ===
   s = processForeignLeaderRotation(s, newDate);
 
+  // === 건축물 자동 완공 처리 ===
+  s = processBuildingCompletion(s, newDate);
+
   return s;
+}
+
+// ---------------- 건축물 자동 완공 ----------------
+function processBuildingCompletion(state: GameState, today: string): GameState {
+  const completed: GameEvent[] = [];
+  const updated = state.buildings.map(b => {
+    if (b.status !== 'CONSTRUCTING') return b;
+    if (!b.expectedCompletion) return b;
+    if (today < b.expectedCompletion) return b;
+    completed.push({
+      id: genId('evt'),
+      date: today,
+      category: 'INFRA' as const,
+      severity: 'MINOR' as const,
+      headline: `[완공] ${b.name} 준공`,
+      body: `${b.location}에 위치한 ${b.name}이(가) 예정대로 ${today} 완공돼 정식 가동에 들어갔다.`,
+      source: '국토교통부',
+      resolved: true,
+    });
+    return {
+      ...b,
+      status: 'OPERATING' as const,
+      builtYear: new Date(today).getFullYear(),
+    };
+  });
+  if (completed.length === 0) return state;
+  return {
+    ...state,
+    buildings: updated,
+    events: [...completed, ...state.events].slice(0, 200),
+  };
 }
 
 // ---------------- 외국 정상 자동 교체 ----------------

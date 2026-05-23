@@ -1163,10 +1163,25 @@ function InfraTab() {
   const [cat, setCat] = useState<BuildingCategory | 'ALL'>('ALL');
   const [filter, setFilter] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+  const today = useGame(s => s.state!.clock.currentDate);
   const [newB, setNewB] = useState({
     name: '', category: '주거' as BuildingCategory, region: 'SEOUL' as RegionId | 'OFFSHORE' | 'OVERSEAS',
-    location: '', size: '', desc: '',
+    location: '', size: '', desc: '', constructionDays: 1095,
   });
+  // 카테고리 기본 공기
+  const DEFAULT_DAYS: Record<string, number> = {
+    '주거': 1095, '상업': 730, '공업': 540, '교통': 1825, '에너지': 2920, '수자원': 2555,
+    '국방': 730, '교육': 365, '의료': 730, '문화': 730, '연구': 1095, '농수산': 365,
+    '관광': 730, '해양': 1095, '우주': 2190, '기타': 365,
+  };
+  const computeCompletion = (days: number) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
+  const daysLeft = (target: string) => {
+    return Math.max(0, Math.ceil((new Date(target).getTime() - new Date(today).getTime()) / 86400000));
+  };
 
   const list = buildings
     .filter(b => cat === 'ALL' || b.category === cat)
@@ -1214,12 +1229,30 @@ function InfraTab() {
               onChange={e => setNewB({ ...newB, size: e.target.value })} />
             <input className="input w-full text-xs" placeholder="설명" value={newB.desc}
               onChange={e => setNewB({ ...newB, desc: e.target.value })} />
+            <div>
+              <label className="block text-[10px] text-slate-400 mb-0.5">
+                공기 (일): {newB.constructionDays}일 ≈ {(newB.constructionDays / 365).toFixed(1)}년 · 완공 예정 <span className="text-amber-300">{computeCompletion(newB.constructionDays)}</span>
+              </label>
+              <input type="range" min={30} max={3650} step={30} className="w-full"
+                value={newB.constructionDays}
+                onChange={e => setNewB({ ...newB, constructionDays: Number(e.target.value) })} />
+              <div className="text-[9px] text-slate-500">
+                기본: {DEFAULT_DAYS[newB.category]}일 ({newB.category}) ·
+                <button className="text-blue-300 ml-1"
+                  onClick={() => setNewB({ ...newB, constructionDays: DEFAULT_DAYS[newB.category] ?? 365 })}>기본값 적용</button>
+              </div>
+            </div>
             <button onClick={() => {
               if (!newB.name || !newB.location) return alert('명칭·위치 필요');
-              addBuilding({ ...newB, status: 'CONSTRUCTING' });
+              addBuilding({
+                ...newB,
+                status: 'CONSTRUCTING',
+                startedAt: today,
+                expectedCompletion: computeCompletion(newB.constructionDays),
+              });
               setNewB({ ...newB, name: '', location: '', size: '', desc: '' });
               setShowAdd(false);
-            }} className="btn-primary w-full text-[11px]">건축 시작</button>
+            }} className="btn-primary w-full text-[11px]">🏗️ 착공 명령</button>
           </div>
         )}
 
@@ -1243,9 +1276,27 @@ function InfraTab() {
                     </div>
                     <div className="text-[10px] text-slate-500">{b.location}{b.size ? ` · ${b.size}` : ''}{b.builtYear ? ` · ${b.builtYear}년` : ''}</div>
                     {b.desc && <div className="text-[10px] text-slate-400 mt-0.5">{b.desc}</div>}
+                    {b.status === 'CONSTRUCTING' && b.expectedCompletion && (() => {
+                      const dleft = daysLeft(b.expectedCompletion);
+                      const totalDays = b.startedAt
+                        ? Math.max(1, Math.ceil((new Date(b.expectedCompletion).getTime() - new Date(b.startedAt).getTime()) / 86400000))
+                        : dleft;
+                      const progress = Math.max(0, Math.min(100, ((totalDays - dleft) / totalDays) * 100));
+                      return (
+                        <div className="mt-1">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-amber-300">🏗️ 완공 예정: {b.expectedCompletion}</span>
+                            <span className="text-amber-300">D-{dleft}</span>
+                          </div>
+                          <div className="bar-bg h-1 mt-0.5">
+                            <div className="bar-fill bg-amber-500" style={{ width: `${progress}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <div className="flex gap-1 mt-1">
                       {b.status === 'CONSTRUCTING' && (
-                        <button onClick={() => updateBuildingStatus(b.id, 'OPERATING')} className="text-[10px] text-emerald-400">완공 처리</button>
+                        <button onClick={() => updateBuildingStatus(b.id, 'OPERATING')} className="text-[10px] text-emerald-400">즉시 완공</button>
                       )}
                       {b.status === 'OPERATING' && (
                         <button onClick={() => updateBuildingStatus(b.id, 'DECOMMISSIONED')} className="text-[10px] text-orange-400">해체 명령</button>

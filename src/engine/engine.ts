@@ -309,21 +309,56 @@ export function applyAIActions(state: GameState, actions: AIAction[] | undefined
         case 'ADD_BUILDING': {
           const p = act.params || {};
           const region = (p.region && VALID_REGIONS.has(p.region)) ? p.region : 'SEOUL';
+          const today = s.clock.currentDate;
+          // 카테고리별 기본 공기 (일)
+          const DEFAULT_DAYS: Record<string, number> = {
+            '주거': 1095,    // 3년
+            '상업': 730,     // 2년
+            '공업': 540,     // 1.5년
+            '교통': 1825,    // 5년
+            '에너지': 2920,  // 8년
+            '수자원': 2555,  // 7년
+            '국방': 730,     // 2년
+            '교육': 365,     // 1년
+            '의료': 730,     // 2년
+            '문화': 730,     // 2년
+            '연구': 1095,    // 3년
+            '농수산': 365,
+            '관광': 730,
+            '해양': 1095,
+            '우주': 2190,    // 6년
+            '기타': 365,
+          };
+          const category = (p.category || '기타') as any;
+          const daysToBuild = Number(p.constructionDays) > 0
+            ? Number(p.constructionDays)
+            : (DEFAULT_DAYS[category] ?? 365);
+          // p.expectedCompletion 우선
+          let expectedCompletion: string;
+          if (p.expectedCompletion && /^\d{4}-\d{2}-\d{2}$/.test(String(p.expectedCompletion))) {
+            expectedCompletion = String(p.expectedCompletion);
+          } else {
+            const d = new Date(today);
+            d.setDate(d.getDate() + daysToBuild);
+            expectedCompletion = d.toISOString().slice(0, 10);
+          }
           const b: Building = {
             id: genId('bld'),
             name: String(p.name || '신규 건축물'),
-            category: (p.category || '기타') as any,
+            category,
             region,
             location: String(p.location || ''),
-            builtYear: p.year ?? new Date(s.clock.currentDate).getFullYear(),
+            builtYear: undefined,         // 완공 시 설정
             size: p.size,
             capacity: p.capacity,
             status: 'CONSTRUCTING',
             desc: p.desc,
             isLandmark: !!p.isLandmark,
+            startedAt: today,
+            expectedCompletion,
           };
           s = { ...s, buildings: [b, ...s.buildings] };
-          log.push(`✅ 건축 착공: ${b.name} (${b.location})`);
+          log.push(`🏗️ 건축 착공: ${b.name} — 완공 예정 ${expectedCompletion} (${daysToBuild}일)`);
           break;
         }
         case 'REMOVE_BUILDING': {
