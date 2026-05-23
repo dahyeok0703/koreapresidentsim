@@ -526,6 +526,8 @@ function MilitaryTab() {
 // ============ 외교 (200개국) ============
 function DiplomacyTab() {
   const countries = useGame(s => s.state!.countries);
+  const issueDecision = useGame(s => s.issueDecision);
+  const busy = useGame(s => s.busy);
   const [continent, setContinent] = useState<Continent | 'ALL'>('ALL');
   const [filter, setFilter] = useState('');
   const [pickedId, setPicked] = useState<string | null>(null);
@@ -603,6 +605,28 @@ function DiplomacyTab() {
             <div className="mt-2 text-[10px] text-slate-500">최근 이슈</div>
             <ul className="text-[11px] text-slate-300 mt-0.5 space-y-0.5">{picked.recentEvents.map((r, i) => <li key={i}>· {r}</li>)}</ul>
           </>)}
+          <div className="mt-3 pt-2 border-t border-slate-800">
+            <div className="text-[10px] text-slate-500 mb-1">외교 행동 (결정 모드로 전송)</div>
+            <div className="grid grid-cols-2 gap-1">
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.leader} ${picked.name} ${picked.leaderTitle}과 정상 통화를 진행한다. 양국 협력 방안 논의.`, `${picked.name} 정상통화`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">📞 정상통화</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name} ${picked.leader}에게 정상회담을 공식 제안한다.`, `${picked.name} 정상회담 제안`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">🤝 정상회담 제안</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name}과의 경제 협력 (교역 확대·FTA 협의·투자 유치)을 강화한다.`, `${picked.name} 경제협력`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">💼 경제협력 강화</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name}에 인도적 지원(의료·식량·재건)을 공식 제공한다.`, `${picked.name} 인도적 지원`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">🕊️ 인도적 지원</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name}에 대한 항의 성명을 외교부 명의로 발표한다.`, `${picked.name} 항의 성명`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">📣 항의 성명</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name}에 대한 경제 제재(수출통제·금융제재)를 발동한다.`, `${picked.name} 제재`)}
+                className="btn-danger text-[10px] py-1 disabled:opacity-40">⚠️ 제재 발동</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name}과의 외교 관계를 격하(대사관 일시 폐쇄·대사 소환)한다.`, `${picked.name} 관계 격하`)}
+                className="btn-danger text-[10px] py-1 disabled:opacity-40">🛑 관계 격하</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name}과의 단교(외교관계 단절)를 선언한다.`, `${picked.name} 단교`)}
+                className="btn-danger text-[10px] py-1 disabled:opacity-40">❌ 단교 선언</button>
+            </div>
+            <div className="text-[9px] text-slate-500 mt-1">※ 클릭 시 결정 모드로 전송되어 AI가 효과를 산출합니다.</div>
+          </div>
         </Panel>
       )}
     </>
@@ -984,6 +1008,8 @@ function RegionsTab() {
   const approval = useGame(s => s.state!.approval);
   const parties = useGame(s => s.state!.parties);
   const buildings = useGame(s => s.state!.buildings);
+  const issueDecision = useGame(s => s.issueDecision);
+  const busy = useGame(s => s.busy);
   const [pickedId, setPicked] = useState<RegionId | null>(null);
   const picked = regions.find(r => r.id === pickedId);
   return (
@@ -1058,6 +1084,24 @@ function RegionsTab() {
                 ))}
               </div>
             </div>
+          </div>
+          <div className="mt-3 pt-2 border-t border-slate-800">
+            <div className="text-[10px] text-slate-500 mb-1">지역 정책 (결정 모드)</div>
+            <div className="grid grid-cols-2 gap-1">
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name}에 특별 SOC 예산을 편성한다 (도로·철도·항만·공항).`, `${picked.name} SOC 예산`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">🛤️ SOC 예산</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name} ${picked.industries[0] ?? '주력산업'} 클러스터 지원 패키지를 발표한다.`, `${picked.name} 산업 지원`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">🏭 산업 지원</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name} 청년·신혼부부 주거 지원과 일자리 패키지를 시행한다.`, `${picked.name} 청년 패키지`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">👨‍👩‍👧 청년 지원</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name} 재해·재난 대응(폭우·산불·태풍) 예방 예산을 증액한다.`, `${picked.name} 재난 예방`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">🛡️ 재난 예방</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name} ${picked.governor} 지사와 청와대 회동을 갖고 현안을 논의한다.`, `${picked.name} 지사 회동`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">🤝 지사 회동</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name}을 직접 방문해 민생 현장을 점검한다.`, `${picked.name} 현장 방문`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">🚙 현장 방문</button>
+            </div>
+            <div className="text-[9px] text-slate-500 mt-1">※ 클릭 시 결정 모드로 전송됩니다.</div>
           </div>
         </Panel>
       )}
@@ -1179,6 +1223,8 @@ function InfraTab() {
 // ============ 기업 ============
 function CompaniesTab() {
   const companies = useGame(s => s.state!.companies);
+  const issueDecision = useGame(s => s.issueDecision);
+  const busy = useGame(s => s.busy);
   const [sector, setSector] = useState<string>('ALL');
   const [filter, setFilter] = useState('');
   const [pickedRank, setPicked] = useState<number | null>(1);
@@ -1236,6 +1282,24 @@ function CompaniesTab() {
           <ul className="text-[11px] text-slate-300 space-y-0.5">
             {picked.recentMoves.map((m, i) => <li key={i}>· {m}</li>)}
           </ul>
+          <div className="mt-3 pt-2 border-t border-slate-800">
+            <div className="text-[10px] text-slate-500 mb-1">정부 대응 (결정 모드)</div>
+            <div className="grid grid-cols-2 gap-1">
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name}의 신규 투자(공장·연구소·인프라)에 정부 보조금·세제 혜택을 지원한다.`, `${picked.name} 투자 지원`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">💰 투자 지원</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name} ${picked.ceo} 대표와 청와대 간담회를 개최하고 ${picked.sector} 산업 발전 방안을 논의한다.`, `${picked.name} 청와대 간담회`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">🏛️ 청와대 간담회</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name}의 해외 진출·수출을 위해 외교적 지원을 제공한다 (정상 방문·수주 외교).`, `${picked.name} 수출 외교`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">🌏 수출 외교</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name}에 대한 공정거래위원회·국세청 합동 조사를 지시한다.`, `${picked.name} 공정위 조사`)}
+                className="btn-danger text-[10px] py-1 disabled:opacity-40">⚖️ 합동 조사</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.sector} 분야에 대한 규제 완화 패키지를 발표한다.`, `${picked.sector} 규제 완화`)}
+                className="btn text-[10px] py-1 disabled:opacity-40">📉 규제 완화</button>
+              <button disabled={!!busy} onClick={() => issueDecision(`${picked.sector} 분야에 대한 규제 강화·재벌개혁을 추진한다.`, `${picked.sector} 규제 강화`)}
+                className="btn-danger text-[10px] py-1 disabled:opacity-40">📈 규제 강화</button>
+            </div>
+            <div className="text-[9px] text-slate-500 mt-1">※ 클릭 시 결정 모드로 전송됩니다.</div>
+          </div>
         </Panel>
       )}
 
@@ -1315,9 +1379,14 @@ function IntlTab() {
   const countries = useGame(s => s.state!.countries);
   const joinOrg = useGame(s => s.joinOrg);
   const leaveOrg = useGame(s => s.leaveOrg);
-  const [section, setSection] = useState<'WORLD' | 'ORGS' | 'CONFLICTS'>('WORLD');
+  const createOrg = useGame(s => s.createOrg);
+  const deleteOrg = useGame(s => s.deleteOrg);
+  const [section, setSection] = useState<'WORLD' | 'ORGS' | 'CONFLICTS' | 'CREATE'>('WORLD');
   const [pickedOrgId, setPickedOrg] = useState<string | null>(null);
   const pickedOrg = orgs.find(o => o.id === pickedOrgId);
+  const [newOrg, setNewOrg] = useState<{ name: string; fullName: string; type: import('../types/game').IntlOrg['type']; hq: string; desc: string; foundingMembers: string[] }>({
+    name: '', fullName: '', type: 'REGIONAL', hq: '서울', desc: '', foundingMembers: [],
+  });
   const memberNames = pickedOrg
     ? pickedOrg.memberCountries.map(cid => {
         if (cid === 'KR') return '🇰🇷 대한민국';
@@ -1328,11 +1397,11 @@ function IntlTab() {
 
   return (
     <>
-      <div className="flex gap-1">
-        {(['WORLD','ORGS','CONFLICTS'] as const).map(t => (
+      <div className="flex gap-1 flex-wrap">
+        {(['WORLD','ORGS','CONFLICTS','CREATE'] as const).map(t => (
           <button key={t} onClick={() => setSection(t)}
             className={`text-[10px] px-2 py-1 rounded ${section === t ? 'bg-rok-blue text-white' : 'bg-slate-800 text-slate-300'}`}>
-            {t === 'WORLD' ? '세계 경제·증시' : t === 'ORGS' ? '국제기구' : '진행 분쟁'}
+            {t === 'WORLD' ? '세계 경제·증시' : t === 'ORGS' ? '국제기구' : t === 'CONFLICTS' ? '진행 분쟁' : '🆕 기구 창설'}
           </button>
         ))}
       </div>
@@ -1404,13 +1473,97 @@ function IntlTab() {
               </div>
               <div className="mt-2 flex gap-1">
                 {pickedOrg.koreaMember
-                  ? <button onClick={() => { if (confirm(`${pickedOrg.name}에서 탈퇴하시겠습니까?`)) leaveOrg(pickedOrg.id); }}
-                            className="btn-danger w-full text-[11px]">탈퇴</button>
-                  : <button onClick={() => joinOrg(pickedOrg.id)} className="btn-primary w-full text-[11px]">가입 신청</button>}
+                  ? <button onClick={() => { if (confirm(`${pickedOrg.name}에서 탈퇴하시겠습니까? 회원국과의 신뢰가 떨어집니다.`)) leaveOrg(pickedOrg.id); }}
+                            className="btn-danger flex-1 text-[11px]">탈퇴</button>
+                  : <button onClick={() => joinOrg(pickedOrg.id)} className="btn-primary flex-1 text-[11px]">가입 신청</button>}
+                {pickedOrg.id.startsWith('CUSTOM_') && (
+                  <button onClick={() => { if (confirm(`${pickedOrg.name}을(를) 영구 해체하시겠습니까?`)) { deleteOrg(pickedOrg.id); setPickedOrg(null); } }}
+                          className="btn-danger text-[11px]">기구 해체</button>
+                )}
               </div>
             </Panel>
           )}
         </>
+      )}
+
+      {section === 'CREATE' && (
+        <Panel title="🆕 신규 국제기구 창설">
+          <div className="text-[11px] text-slate-400 mb-2 leading-relaxed">
+            대한민국이 주도하는 새로운 다자기구를 창설합니다. 창설국 참여국과의 외교 관계가 강화되고,
+            서구·동구 진영에 따라 다른 국가들의 반응이 갈립니다.
+          </div>
+          <div className="space-y-1.5">
+            <div>
+              <label className="block text-[10px] text-slate-400 mb-0.5">기구 이름 (약칭)</label>
+              <input className="input w-full text-xs" placeholder="예: AICN" value={newOrg.name}
+                onChange={e => setNewOrg({ ...newOrg, name: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-[10px] text-slate-400 mb-0.5">정식 명칭</label>
+              <input className="input w-full text-xs" placeholder="예: Asian Inclusive Cooperation Network" value={newOrg.fullName}
+                onChange={e => setNewOrg({ ...newOrg, fullName: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-0.5">유형</label>
+                <select className="input w-full text-xs" value={newOrg.type}
+                  onChange={e => setNewOrg({ ...newOrg, type: e.target.value as any })}>
+                  <option value="UN">UN 산하</option>
+                  <option value="SECURITY">안보</option>
+                  <option value="ECONOMIC">경제</option>
+                  <option value="TRADE">무역</option>
+                  <option value="CULTURAL">문화</option>
+                  <option value="HEALTH">보건</option>
+                  <option value="ENVIRONMENT">환경·기후</option>
+                  <option value="REGIONAL">지역</option>
+                  <option value="기타">기타</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-0.5">본부 (도시)</label>
+                <input className="input w-full text-xs" value={newOrg.hq}
+                  onChange={e => setNewOrg({ ...newOrg, hq: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] text-slate-400 mb-0.5">설립 취지·역할</label>
+              <textarea className="input w-full text-xs h-16" placeholder="예: 아시아 국가 간 디지털·AI 표준 협력"
+                value={newOrg.desc} onChange={e => setNewOrg({ ...newOrg, desc: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-[10px] text-slate-400 mb-0.5">창설국 (한국 외, 클릭하여 토글 · {newOrg.foundingMembers.length}개 선택)</label>
+              <div className="max-h-40 overflow-y-auto bg-slate-950/40 border border-slate-800 rounded p-1 space-y-0.5">
+                {countries.filter(c => c.relation >= 30 || newOrg.foundingMembers.includes(c.id)).slice(0, 40).map(c => {
+                  const picked = newOrg.foundingMembers.includes(c.id);
+                  return (
+                    <button key={c.id} onClick={() => {
+                      setNewOrg({
+                        ...newOrg,
+                        foundingMembers: picked
+                          ? newOrg.foundingMembers.filter(x => x !== c.id)
+                          : [...newOrg.foundingMembers, c.id],
+                      });
+                    }} className={`w-full flex items-center justify-between text-[10px] px-1.5 py-0.5 rounded ${picked ? 'bg-blue-700/40 border border-blue-600' : 'bg-slate-800/60 border border-slate-700'}`}>
+                      <span>{c.flag} {c.name}</span>
+                      <span className="text-slate-400">관계 {c.relation > 0 ? '+' : ''}{c.relation}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="text-[9px] text-slate-500 mt-0.5">※ 관계 30 이상 국가만 표시. 우호국이 많을수록 가입 가능성 ↑</div>
+            </div>
+            <button onClick={() => {
+              if (!newOrg.name.trim()) return alert('기구 이름을 입력해 주세요.');
+              if (!newOrg.desc.trim()) return alert('설립 취지를 입력해 주세요.');
+              if (newOrg.foundingMembers.length === 0) {
+                if (!confirm('창설국이 한국뿐입니다. 그래도 창설하시겠습니까?')) return;
+              }
+              createOrg(newOrg);
+              setNewOrg({ name: '', fullName: '', type: 'REGIONAL', hq: '서울', desc: '', foundingMembers: [] });
+              setSection('ORGS');
+            }} className="btn-primary w-full text-[12px] py-2">🚀 창설 선언</button>
+          </div>
+        </Panel>
       )}
 
       {section === 'CONFLICTS' && (

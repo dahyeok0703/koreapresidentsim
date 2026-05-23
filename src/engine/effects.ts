@@ -167,20 +167,27 @@ function advanceOneDay(state: GameState): GameState {
   };
 
   const noise = (range: number) => (Math.random() - 0.5) * range;
+  const newDays = state.clock.daysInOffice + 1;
+  // 수치 변동은 최소 4일 주기 (지지율·코스피·환율·심리·기업시총 등)
+  const isFluctuationDay = newDays % 4 === 0;
+  // 4일치 변동량을 한 번에 적용
+  const FLUC = isFluctuationDay ? 4 : 0;
 
-  // === 경제 자연 변동 (매일) ===
+  // === 경제 자연 변동 (4일마다) ===
   const e = { ...s.economy };
-  e.kospi = Math.max(500, Math.round(e.kospi + noise(15)));
-  e.kosdaq = Math.max(300, Math.round(e.kosdaq + noise(5)));
-  e.fxUsdKrw = Math.max(800, Math.min(2000, Math.round((e.fxUsdKrw + noise(3)) * 10) / 10));
-  e.inflation = Math.round((e.inflation + noise(0.03)) * 100) / 100;
-  e.unemployment = Math.max(0.5, Math.round((e.unemployment + noise(0.02)) * 100) / 100);
-  e.consumerConfidence = clamp(e.consumerConfidence + noise(0.5), 0, 200);
-  e.businessConfidence = clamp(e.businessConfidence + noise(0.5), 0, 200);
-  e.vkospi = Math.max(8, e.vkospi + noise(0.4));
-  e.treasury10y = Math.max(0.5, Math.round((e.treasury10y + noise(0.02)) * 100) / 100);
+  if (isFluctuationDay) {
+    e.kospi = Math.max(500, Math.round(e.kospi + noise(15 * FLUC)));
+    e.kosdaq = Math.max(300, Math.round(e.kosdaq + noise(5 * FLUC)));
+    e.fxUsdKrw = Math.max(800, Math.min(2000, Math.round((e.fxUsdKrw + noise(3 * FLUC)) * 10) / 10));
+    e.inflation = Math.round((e.inflation + noise(0.03 * FLUC)) * 100) / 100;
+    e.unemployment = Math.max(0.5, Math.round((e.unemployment + noise(0.02 * FLUC)) * 100) / 100);
+    e.consumerConfidence = clamp(e.consumerConfidence + noise(0.5 * FLUC), 0, 200);
+    e.businessConfidence = clamp(e.businessConfidence + noise(0.5 * FLUC), 0, 200);
+    e.vkospi = Math.max(8, e.vkospi + noise(0.4 * FLUC));
+    e.treasury10y = Math.max(0.5, Math.round((e.treasury10y + noise(0.02 * FLUC)) * 100) / 100);
+  }
 
-  // 일별 수출입 누적 (대략 일 수출 $1.8B, 수입 $1.6B 평균)
+  // 일별 수출입 누적 (실제 경제활동이므로 매일 반영)
   const dailyExport = 1.7 + noise(0.4);
   const dailyImport = 1.55 + noise(0.4);
   e.monthlyExportUSD = Math.round((e.monthlyExportUSD + dailyExport) * 10) / 10;
@@ -212,51 +219,54 @@ function advanceOneDay(state: GameState): GameState {
     }
   }
 
-  // 히스토리 (주 1회 정도)
-  if (cur.getDay() === 1) {
+  // 히스토리 (4일 변동 사이클에 맞춰)
+  if (isFluctuationDay) {
     e.history = [
       ...e.history.slice(-59),
       { date: newDate, gdp: e.gdpGrowth, cpi: e.inflation, unemp: e.unemployment, kospi: e.kospi, fxUsdKrw: e.fxUsdKrw },
     ];
   }
-  // === 기업 시가총액 실시간 변동 ===
-  // 코스피 일간 변동률 = (kospi_new - kospi_old) / kospi_old
-  const kospiBefore = state.economy.kospi;
-  const kospiDelta = (e.kospi - kospiBefore) / kospiBefore;  // 보통 -0.02 ~ +0.02
-  let updatedCompanies = s.companies.map(c => {
-    const beta = SECTOR_BETA[c.sector] ?? 1.0;
-    // 섹터 베타 × 코스피 변동 + 개별 노이즈
-    const idiosyncratic = (Math.random() - 0.5) * 0.018;     // ±0.9% 개별 노이즈
-    const pct = kospiDelta * beta + idiosyncratic;
-    const newCap = Math.max(0.1, c.marketCapKRW * (1 + pct));
-    return { ...c, marketCapKRW: Math.round(newCap * 100) / 100 };
-  });
-  // 시가총액 기준 재랭킹
-  updatedCompanies.sort((a, b) => b.marketCapKRW - a.marketCapKRW);
-  updatedCompanies = updatedCompanies.map((c, i) => ({ ...c, rank: i + 1 }));
-  s.companies = updatedCompanies;
+  // === 기업 시가총액 변동 (4일마다, 코스피와 동기화) ===
+  if (isFluctuationDay) {
+    const kospiBefore = state.economy.kospi;
+    const kospiDelta = (e.kospi - kospiBefore) / kospiBefore;
+    let updatedCompanies = s.companies.map(c => {
+      const beta = SECTOR_BETA[c.sector] ?? 1.0;
+      const idiosyncratic = (Math.random() - 0.5) * 0.025;
+      const pct = kospiDelta * beta + idiosyncratic;
+      const newCap = Math.max(0.1, c.marketCapKRW * (1 + pct));
+      return { ...c, marketCapKRW: Math.round(newCap * 100) / 100 };
+    });
+    updatedCompanies.sort((a, b) => b.marketCapKRW - a.marketCapKRW);
+    updatedCompanies = updatedCompanies.map((c, i) => ({ ...c, rank: i + 1 }));
+    s.companies = updatedCompanies;
+  }
 
   s.economy = e;
 
-  // === 지지율 회귀 + 노이즈 ===
-  const drift = (s.approval.overall - 50) * -0.008;
-  const newOverall = clamp(s.approval.overall + drift + noise(0.2), 0, 100);
-  s.approval = {
-    ...s.approval,
-    overall: newOverall,
-    history: cur.getDay() === 1
-      ? [...s.approval.history.slice(-119), { date: newDate, value: Math.round(newOverall * 10) / 10 }]
-      : s.approval.history,
-  };
+  // === 지지율 회귀 + 노이즈 (4일마다) ===
+  if (isFluctuationDay) {
+    const drift = (s.approval.overall - 50) * -0.008 * FLUC;
+    const newOverall = clamp(s.approval.overall + drift + noise(0.2 * FLUC), 0, 100);
+    s.approval = {
+      ...s.approval,
+      overall: newOverall,
+      history: [...s.approval.history.slice(-119), { date: newDate, value: Math.round(newOverall * 10) / 10 }],
+    };
+  }
 
-  // === SNS 정서 회귀 ===
-  s.sns = { ...s.sns, sentimentScore: Math.round(Math.max(-100, Math.min(100, s.sns.sentimentScore * 0.985 + noise(0.4)))) };
+  // === SNS 정서 회귀 (4일마다) ===
+  if (isFluctuationDay) {
+    s.sns = { ...s.sns, sentimentScore: Math.round(Math.max(-100, Math.min(100, s.sns.sentimentScore * 0.94 + noise(1.5)))) };
+  }
 
-  // === 안보 자연 변동 ===
-  const sec = { ...s.security };
-  sec.northKoreaTension = clamp(sec.northKoreaTension + noise(0.5));
-  sec.cyberThreatLevel = clamp(sec.cyberThreatLevel + noise(0.3));
-  s.security = sec;
+  // === 안보 자연 변동 (4일마다) ===
+  if (isFluctuationDay) {
+    const sec = { ...s.security };
+    sec.northKoreaTension = clamp(sec.northKoreaTension + noise(2));
+    sec.cyberThreatLevel = clamp(sec.cyberThreatLevel + noise(1.2));
+    s.security = sec;
+  }
 
   // === 전쟁 개입 비용 차감 ===
   if (s.security.warEngagements.length > 0) {

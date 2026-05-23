@@ -56,6 +56,8 @@ interface UIState {
   // 국제기구
   joinOrg: (orgId: string) => void;
   leaveOrg: (orgId: string) => void;
+  createOrg: (input: { name: string; fullName?: string; type: import('./types/game').IntlOrg['type']; hq: string; desc: string; foundingMembers: string[] }) => void;
+  deleteOrg: (orgId: string) => void;
 
   // 전쟁 개입
   beginWarEngagement: (w: Omit<WarEngagement, 'id'>) => void;
@@ -81,7 +83,7 @@ export const useGame = create<UIState>((set, get) => ({
 
   hydrate() {
     const s = loadCurrent();
-    if (s && (s.version ?? 0) >= 7) set({ state: s });
+    if (s && (s.version ?? 0) >= 8) set({ state: s });
     else if (s) { localStorage.removeItem('kps-current'); }
   },
 
@@ -356,16 +358,136 @@ export const useGame = create<UIState>((set, get) => ({
 
   // ---------- 국제기구 ----------
   joinOrg(orgId) {
-    get().patch(s => ({
-      ...s,
-      intlOrgs: s.intlOrgs.map(o => o.id === orgId ? { ...o, koreaMember: true, koreaRole: '정회원' as const, memberCountries: o.memberCountries.includes('KR') ? o.memberCountries : [...o.memberCountries, 'KR'] } : o),
-    }));
+    get().patch(s => {
+      const org = s.intlOrgs.find(o => o.id === orgId);
+      if (!org) return s;
+      // 가입 효과: 회원국과 외교 관계 ±, 대통령 지지율 약간 ↑
+      let next = applyEffects(s, {
+        approval: 0.5,
+        sns: { sentiment: 3 },
+        notes: `${org.name} 가입`,
+      });
+      // 회원국과 관계 +1, 적대 진영(브릭스/SCO 가입 시 미국·EU −, NATO/G7 가입 시 중·러 −)
+      const orgIsWestern = ['G7','NATO','NATO_IP4','IPEF','CPTPP','OECD'].includes(orgId);
+      const orgIsEastern = ['BRICS','SCO'].includes(orgId);
+      next = {
+        ...next,
+        countries: next.countries.map(c => {
+          if (org.memberCountries.includes(c.id)) {
+            return { ...c, relation: Math.min(100, c.relation + 2), trustLevel: Math.min(100, c.trustLevel + 1) };
+          }
+          if (orgIsWestern && ['CN','RU','NK'].includes(c.id)) {
+            return { ...c, relation: Math.max(-100, c.relation - 3) };
+          }
+          if (orgIsEastern && ['US','JP'].includes(c.id)) {
+            return { ...c, relation: Math.max(-100, c.relation - 4) };
+          }
+          return c;
+        }),
+        intlOrgs: next.intlOrgs.map(o => o.id === orgId
+          ? { ...o, koreaMember: true, koreaRole: '정회원' as const, memberCountries: o.memberCountries.includes('KR') ? o.memberCountries : [...o.memberCountries, 'KR'] }
+          : o),
+        events: [{
+          id: genId('evt'), date: s.clock.currentDate,
+          category: 'DIPLOMACY' as const, severity: 'MODERATE' as const,
+          headline: `[국제기구 가입] 대한민국, ${org.name} 정식 가입`,
+          body: `대한민국이 ${org.name}(${org.fullName ?? ''})에 정식 가입했다. ${org.desc}`,
+          source: '외교부', resolved: true,
+        } as GameEvent, ...next.events].slice(0, 200),
+      };
+      return next;
+    });
   },
   leaveOrg(orgId) {
-    get().patch(s => ({
-      ...s,
-      intlOrgs: s.intlOrgs.map(o => o.id === orgId ? { ...o, koreaMember: false, koreaRole: '비회원' as const, memberCountries: o.memberCountries.filter(c => c !== 'KR') } : o),
-    }));
+    get().patch(s => {
+      const org = s.intlOrgs.find(o => o.id === orgId);
+      if (!org) return s;
+      let next = applyEffects(s, {
+        approval: -0.8,
+        sns: { sentiment: -4, protestSentiment: 3 },
+        notes: `${org.name} 탈퇴`,
+      });
+      next = {
+        ...next,
+        countries: next.countries.map(c => {
+          if (org.memberCountries.includes(c.id)) {
+            return { ...c, relation: Math.max(-100, c.relation - 3), trustLevel: Math.max(0, c.trustLevel - 2) };
+          }
+          return c;
+        }),
+        intlOrgs: next.intlOrgs.map(o => o.id === orgId
+          ? { ...o, koreaMember: false, koreaRole: '비회원' as const, memberCountries: o.memberCountries.filter(c => c !== 'KR') }
+          : o),
+        events: [{
+          id: genId('evt'), date: s.clock.currentDate,
+          category: 'DIPLOMACY' as const, severity: 'MAJOR' as const,
+          headline: `[국제기구 탈퇴] 대한민국, ${org.name} 탈퇴 결정`,
+          body: `대한민국이 ${org.name}에서 탈퇴했다. 회원국들과의 신뢰 손상 우려가 제기된다.`,
+          source: '외교부', resolved: true,
+        } as GameEvent, ...next.events].slice(0, 200),
+      };
+      return next;
+    });
+  },
+  createOrg(input) {
+    get().patch(s => {
+      const newOrg: import('./types/game').IntlOrg = {
+        id: 'CUSTOM_' + genId('org').slice(-6).toUpperCase(),
+        name: input.name,
+        fullName: input.fullName,
+        type: input.type,
+        founded: s.clock.currentDate.slice(0, 4),
+        hq: input.hq,
+        memberCountries: ['KR', ...input.foundingMembers],
+        koreaMember: true,
+        koreaRole: '창설국',
+        desc: input.desc,
+        benefits: '한국 주도 신규 다자기구',
+        notes: '대한민국 창설',
+      };
+      // 창설 효과: 외교 신뢰 ↑, 지지율 ↑, 창설 참여국과 관계 ↑
+      let next = applyEffects(s, {
+        approval: 1.5,
+        sns: { sentiment: 6 },
+        social: { governmentTrust: 1 },
+        notes: `${input.name} 창설`,
+      });
+      next = {
+        ...next,
+        countries: next.countries.map(c => input.foundingMembers.includes(c.id)
+          ? { ...c, relation: Math.min(100, c.relation + 4), trustLevel: Math.min(100, c.trustLevel + 3) }
+          : c),
+        intlOrgs: [newOrg, ...next.intlOrgs],
+        events: [{
+          id: genId('evt'), date: s.clock.currentDate,
+          category: 'DIPLOMACY' as const, severity: 'MAJOR' as const,
+          headline: `[신규 다자기구 창설] 대한민국 주도 "${input.name}" 출범`,
+          body: `대한민국이 ${input.foundingMembers.length}개 창설국과 함께 ${input.name}을(를) 공식 출범시켰다. 본부 ${input.hq}. ${input.desc}`,
+          source: '외교부', resolved: true,
+        } as GameEvent, ...next.events].slice(0, 200),
+      };
+      return next;
+    });
+  },
+  deleteOrg(orgId) {
+    // 한국이 창설한 커스텀 기구만 해체 가능
+    get().patch(s => {
+      const org = s.intlOrgs.find(o => o.id === orgId);
+      if (!org || !org.id.startsWith('CUSTOM_')) return s;
+      let next = applyEffects(s, { approval: -0.6, sns: { sentiment: -3 }, notes: `${org.name} 해체` });
+      next = {
+        ...next,
+        intlOrgs: next.intlOrgs.filter(o => o.id !== orgId),
+        events: [{
+          id: genId('evt'), date: s.clock.currentDate,
+          category: 'DIPLOMACY' as const, severity: 'MODERATE' as const,
+          headline: `[기구 해체] ${org.name} 해체`,
+          body: `${org.name}이(가) 공식 해체됐다. 회원국들의 입장이 엇갈리고 있다.`,
+          source: '외교부', resolved: true,
+        } as GameEvent, ...next.events].slice(0, 200),
+      };
+      return next;
+    });
   },
 
   // ---------- 전쟁 개입 ----------

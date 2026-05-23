@@ -384,7 +384,7 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
   };
 
   return {
-    version: 7,
+    version: 8,
     createdAt: new Date().toISOString(),
     president: p,
     clock: { currentDate: date, daysInOffice: 0, turnNumber: 1, speed: 'paused' },
