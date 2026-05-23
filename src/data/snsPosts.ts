@@ -1,5 +1,5 @@
 import type { SnsPost, SnsPlatform } from '../types/game';
-import { genId } from './initialState';
+import { genId } from '../utils/id';
 
 // 초기 SNS 포스트 풀. 게임 진행 시 AI가 생성한 포스트로 점진적 교체.
 type Row = [SnsPlatform['id'], string, string, string, number, number, number, number];

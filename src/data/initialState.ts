@@ -15,65 +15,90 @@ import { INITIAL_BUILDINGS } from './buildings';
 import { INITIAL_WEAPONS, INITIAL_BASES, INITIAL_UNITS } from './military';
 import { INITIAL_ARTICLES } from './articles';
 import { ADMIN_BODIES, INITIAL_ADMIN_TASKS, NOMINEE_POOL } from './adminBodies';
+import { genId, randomKoreanName } from '../utils/id';
+export { genId, randomKoreanName };
 
-const KOREAN_SURNAMES = ['김','이','박','최','정','강','조','윤','장','임','한','오','서','신','권','황','안','송','류','전','홍','고','문','양','손','배','백','허','유','남','심','노','하','곽','성','차','주','우','구','민','진','지','엄','채'];
-const KOREAN_GIVEN = ['민준','서연','지호','수빈','예린','지훈','유나','현우','지원','서윤','도윤','은서','시우','지유','준서','채원','정환','다은','승현','예진','태현','윤아','상현','보경','재민','선영','우진','지민','동현','수진','성호','혜진','재현','미경','경수','은영','병철','정희','광호','순자','종현','영숙','진우','미숙'];
-
-let _idCounter = 1;
-export function genId(prefix = 'id'): string {
-  return `${prefix}_${Date.now().toString(36)}_${(_idCounter++).toString(36)}`;
-}
-
-export function randomKoreanName(): string {
-  const s = KOREAN_SURNAMES[Math.floor(Math.random() * KOREAN_SURNAMES.length)];
-  const g = KOREAN_GIVEN[Math.floor(Math.random() * KOREAN_GIVEN.length)];
-  return s + g;
+// 한국 정치 지형 반영 함수: 그룹 성향(이념점수)과 대통령 이념의 차이로 지지율 산출
+// 그룹 성향: -100(극진보) ~ +100(극보수). 대통령 이념과 가까울수록 지지율 ↑.
+function approvalFor(base: number, presPid: number, groupIdeo: number, amp = 0.25): number {
+  // 이념 차이 0이면 base + 12, 이념 차이 100이면 base - 12 (amp=0.25 기준)
+  const diff = presPid - groupIdeo;
+  const delta = (50 - Math.abs(diff)) * amp; // -12.5~+12.5
+  return Math.round((base + delta) * 10) / 10;
 }
 
 function buildApproval(presidentParty: PartyId, base: number): ApprovalBreakdown {
-  const byRegion: Record<string, number> = {};
   const partyIdeology = PARTIES.find(p => p.id === presidentParty)?.ideology ?? 0;
+  // ── 지역별: REGIONS의 leaning (호남 +75, 영남 -60~-25, 강원 -20, 제주 +20, 수도권 ±5~15)
+  const byRegion: Record<string, number> = {};
   for (const r of REGIONS) {
-    const alignment = 1 - Math.abs(r.leaning - (-partyIdeology)) / 200;
-    byRegion[r.id] = Math.round(base + (alignment - 0.5) * 30);
+    // r.leaning: -100(보수) ~ +100(진보) → 그룹 이념점수로 변환: 부호 반전
+    const groupIdeo = -r.leaning;
+    byRegion[r.id] = approvalFor(base, partyIdeology, groupIdeo, 0.35);
   }
+  // ── 정당 지지층별
   const byPartyBase: Record<string, number> = {};
   for (const p of PARTIES) {
-    const ideoDist = Math.abs(p.ideology - partyIdeology) / 200;
-    byPartyBase[p.id] = Math.round(Math.max(5, base + (1 - ideoDist) * 50 - 25));
+    byPartyBase[p.id] = approvalFor(base, partyIdeology, p.ideology, 0.6);
   }
   byPartyBase[presidentParty] = Math.min(95, base + 35);
-  const progressive = partyIdeology < 0;
+
+  // ── 세대별: 2030/6070=보수, 4050=진보 (2024-2025 한국 신패턴)
+  const ageIdeo = {
+    '18-29': 25,   // 보수
+    '30-39': 20,   // 약보수
+    '40-49': -30,  // 진보
+    '50-59': -25,  // 진보
+    '60-69': 40,   // 보수
+    '70+':   55,   // 강보수
+  } as const;
+  const byAgeGroup = {
+    '18-29': approvalFor(base, partyIdeology, ageIdeo['18-29'], 0.35),
+    '30-39': approvalFor(base, partyIdeology, ageIdeo['30-39'], 0.35),
+    '40-49': approvalFor(base, partyIdeology, ageIdeo['40-49'], 0.35),
+    '50-59': approvalFor(base, partyIdeology, ageIdeo['50-59'], 0.35),
+    '60-69': approvalFor(base, partyIdeology, ageIdeo['60-69'], 0.35),
+    '70+':   approvalFor(base, partyIdeology, ageIdeo['70+'], 0.4),
+  };
+
+  // ── 성별: 남자=보수, 여자=진보
+  const byGender = {
+    male:   approvalFor(base, partyIdeology, 25,  0.3),   // 보수
+    female: approvalFor(base, partyIdeology, -25, 0.3),   // 진보
+  };
+
+  // ── 이념별
+  const byIdeology = {
+    progressive: approvalFor(base, partyIdeology, -70, 0.6),
+    moderate:    approvalFor(base, partyIdeology, 0,   0.4),
+    conservative: approvalFor(base, partyIdeology, 70, 0.6),
+  };
+
+  // ── 소득별 (저소득=진보 성향, 고소득=보수 성향)
+  const byIncome = {
+    low:        approvalFor(base, partyIdeology, -20, 0.3),
+    middleLow:  approvalFor(base, partyIdeology, -10, 0.3),
+    middle:     approvalFor(base, partyIdeology, 0,   0.3),
+    middleHigh: approvalFor(base, partyIdeology, 10,  0.3),
+    high:       approvalFor(base, partyIdeology, 30,  0.3),
+  };
+
+  // ── 학력별 (고졸=보수, 대졸=중도, 대학원=진보 - 한국 패턴)
+  const byEducation = {
+    highschool: approvalFor(base, partyIdeology, 15,  0.25),
+    college:    approvalFor(base, partyIdeology, -5,  0.25),
+    graduate:   approvalFor(base, partyIdeology, -25, 0.25),
+  };
+
   return {
     overall: base,
-    byAgeGroup: {
-      '18-29': base + (progressive ? 5 : -3),
-      '30-39': base + (progressive ? 9 : -7),
-      '40-49': base + (progressive ? 12 : -9),
-      '50-59': base + (progressive ? 2 : 3),
-      '60-69': base + (progressive ? -10 : 10),
-      '70+':   base + (progressive ? -16 : 15),
-    },
+    byAgeGroup,
     byRegion: byRegion as ApprovalBreakdown['byRegion'],
-    byGender: { male: base - 2, female: base + 2 },
-    byIdeology: {
-      progressive: base + (progressive ? 22 : -28),
-      moderate: base,
-      conservative: base + (progressive ? -28 : 22),
-    },
+    byGender,
+    byIdeology,
     byPartyBase: byPartyBase as ApprovalBreakdown['byPartyBase'],
-    byIncome: {
-      low: base + (progressive ? 8 : -5),
-      middleLow: base + (progressive ? 5 : -3),
-      middle: base,
-      middleHigh: base + (progressive ? -3 : 4),
-      high: base + (progressive ? -10 : 10),
-    },
-    byEducation: {
-      highschool: base + (progressive ? -5 : 3),
-      college: base + (progressive ? 4 : 0),
-      graduate: base + (progressive ? 8 : -2),
-    },
+    byIncome,
+    byEducation,
     history: [{ date: '2025-06-04', value: base }],
   };
 }
@@ -358,7 +383,7 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
   };
 
   return {
-    version: 3,
+    version: 4,
     createdAt: new Date().toISOString(),
     president: p,
     clock: { currentDate: date, daysInOffice: 0, turnNumber: 1, speed: 'paused' },
@@ -384,7 +409,7 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
       id: genId('msg'),
       role: 'advisor',
       speaker: '비서실장',
-      content: `대통령님, 취임을 진심으로 축하드립니다. 오늘부터 5년 임기가 공식 시작됩니다.\n\n[가장 시급한 사안 — 초대 내각 인선]\n인수위 없는 즉시 출범 상황입니다. 우측 "행정부" 탭에서 부처별 후보를 지명해 주십시오. 청문회는 이후 진행됩니다.\n\n[주요 현안]\n1) 한미 정상회담 일정 조율 (트럼프 행정부 관세 협상 연계)\n2) 12·3 비상계엄 후속 수사·국론 통합\n3) 의대 정원 갈등 — 응급실 마비 지속\n4) 한은 7월 추가 금리 인하 여부\n5) 북한 ICBM 발사 임박 정황\n\n채팅창에 자유롭게 지시·질문해 주십시오. "대화" 모드는 협의용, "결정" 모드는 즉시 정책으로 집행됩니다.`,
+      content: `대통령님. ${date}. 국회의사당 광장. 첫 번째 결재가 올라옵니다.\n\n인수위는 없습니다. 60일 만의 조기 대선이었습니다.\n행정부의 절반이 공석입니다. 시간은 우리 편이 아닙니다.\n\n오늘의 좌표를 보고드리겠습니다.\n\n1. 워싱턴 — 트럼프는 관세를 협상 카드로 꺼냈습니다. 통화는 곧 잡힐 것입니다.\n2. 평양 — 동창리에서 신호가 잡혔습니다. ICBM 발사가 임박했습니다.\n3. 여의도 — 응급실은 닫혔습니다. 의대 정원, 5개월째 답이 없습니다.\n4. 광화문 — 12·3의 그림자가 여전히 길게 누워 있습니다.\n5. 한국은행 — 7월 금통위. 금리 인하 vs 동결.\n\n선택은 대통령님의 몫입니다.\n채팅에 자유롭게 말씀하십시오. "대화"는 협의, "결정"은 집행입니다.\n행정부 인선부터 시작하시길 권합니다.`,
       timestamp: date,
       realTimestamp: new Date().toISOString(),
       contextType: 'BRIEFING',

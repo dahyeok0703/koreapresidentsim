@@ -1,5 +1,5 @@
 import type { WeaponEntry, MilitaryBase, MilitaryUnit, RegionId } from '../types/game';
-import { genId } from './initialState';
+import { genId } from '../utils/id';
 
 // ===== 무기 인벤토리 (2024 GFP / 국방백서 기준) =====
 type WRow = [WeaponEntry['category'], string, number, string, string?];

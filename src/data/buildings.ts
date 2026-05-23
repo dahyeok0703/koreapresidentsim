@@ -1,5 +1,5 @@
 import type { Building, RegionId, BuildingCategory } from '../types/game';
-import { genId } from './initialState';
+import { genId } from '../utils/id';
 
 type Row = [string, BuildingCategory, RegionId | 'OFFSHORE' | 'OVERSEAS', string, number?, string?, number?, string?, boolean?];
 

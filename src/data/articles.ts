@@ -1,5 +1,5 @@
 import type { NewsArticle, MediaId, EventCategory } from '../types/game';
-import { genId } from './initialState';
+import { genId } from '../utils/id';
 
 type Row = [MediaId, string, string, EventCategory, number, string?];
 
