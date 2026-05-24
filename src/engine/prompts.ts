@@ -429,6 +429,61 @@ JSON 출력 형식(반드시 이 구조):
   ],
   "effects": { ... 수치 변화 ... },
   "actions": [ ... 구조 변경 액션 (선택, 위 스키마 따름) ... ],
-  "advisorReply": "비서실장의 보고 — 크랙 톤. 6~10문장 이내. 결정의 의미·반응·다음 과제 요약."
-}`;
+  "advisorReply": "비서실장의 보고 — 크랙 톤. 6~10문장 이내. 결정의 의미·반응·다음 과제 요약.",
+
+  "snsReactions": [
+    // 3~7개 필수. 결정 직후 시민 SNS 반응. 플랫폼 정파 성향 반영.
+    // 진보 플랫폼은 진보 결정 환영·보수 결정 비판, 보수 플랫폼은 반대.
+    {
+      "platform": "X|INSTAGRAM|FACEBOOK|YOUTUBE|KAKAO|NAVER_CAFE|DCINSIDE|FMKOREA|CLIEN|THREADS|NAVER_BLOG|REDDIT|PTT|BAIDU|WEIBO|YAHOO_JP|X_INTL",
+      "author": "닉네임",
+      "handle": "@아이디 (선택)",
+      "content": "게시물 본문 (플랫폼 톤 반영, 결정에 즉각 반응)",
+      "sentiment": -100~100,
+      "likes": 0~50000,
+      "reposts": 0~10000,
+      "comments": 0~20000
+    }
+  ],
+
+  "articlesByMedia": [
+    // 2~5개 매체 본격 기사 (mediaReactions와 별도, 본문 포함).
+    // 보수·진보·중도 매체 균형. bias에 따라 같은 사안 다르게 프레임.
+    {
+      "outlet": "CHOSUN|HANI|JTBC|KBS|MBC|SBS|JOONGANG|DONGA|KYUNGHYANG|YTN|TVCHOSUN|CHANNELA|MK|EDAILY|YONHAP|NEWSIS|NEWS1|OHMY",
+      "headline": "기사 헤드라인",
+      "lead": "리드 1문장",
+      "body": "본문 2~3문장",
+      "bias": -100~100,
+      "category": "POLITICS|ECONOMY|SOCIAL|DIPLOMACY|SECURITY|LEGAL|HEALTH|TECH|CULTURE|NK|INTERNATIONAL|MEDIA"
+    }
+  ],
+
+  "worldReactions": [
+    // 0~3개. 결정이 대외적 함의(외교·관세·안보·대북) 있을 때만. 그 외 빈 배열.
+    {
+      "headline": "국제 신문 톤 헤드라인",
+      "body": "2~3문장",
+      "involvedCountries": ["US","CN","JP","..."],
+      "koreaImpact": "LOW|MED|HIGH",
+      "category": "DIPLOMACY|WAR|ECONOMY|DOMESTIC|TECH|TREATY"
+    }
+  ],
+
+  "additionalEvents": [
+    // 0~3개. 결정 직후 부수 사건 (시위·항의 성명·시장 충격·내부 갈등 등).
+    {
+      "headline": "사건 헤드라인",
+      "body": "2문장",
+      "category": "POLITICS|ECONOMY|SOCIAL|SCANDAL|LEGAL|DISASTER|MEDIA",
+      "severity": "INFO|MINOR|MODERATE|MAJOR|CRITICAL",
+      "source": "보도 출처 (선택)"
+    }
+  ]
+}
+
+[실시간 반응 필수]
+모든 결정은 반드시 snsReactions·articlesByMedia 채우기.
+worldReactions·additionalEvents는 결정 성격에 따라 선택.
+응답 길이가 길어지더라도 JSON 완결성 유지 필수.`;
 }

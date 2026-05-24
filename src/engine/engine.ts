@@ -38,7 +38,12 @@ export interface DecisionResult {
   mediaReactions: { outlet: string; headline: string }[];
   effects: PartialEffects;
   advisorReply: string;
-  actions?: AIAction[];      // 채팅 결정 → 게임 상태 직접 변경
+  actions?: AIAction[];
+  // 결정 후 실시간 반응 ─ AI가 생성
+  snsReactions?: { platform: string; author: string; handle?: string; content: string; sentiment: number; likes?: number; reposts?: number; comments?: number }[];
+  worldReactions?: { headline: string; body: string; involvedCountries: string[]; koreaImpact: 'LOW' | 'MED' | 'HIGH'; category?: string }[];
+  additionalEvents?: { headline: string; body: string; category: string; severity: string; source?: string }[];
+  articlesByMedia?: { outlet: string; headline: string; lead: string; body?: string; bias: number; category?: string }[];
 }
 
 export async function evaluateDecision(
@@ -49,10 +54,12 @@ export async function evaluateDecision(
     apiKey: state.settings.openaiApiKey,
     model: state.settings.model,
     temperature: 0.75,
-    maxTokens: 3000,
+    maxTokens: 4500,
     messages: [
       { role: 'system', content: buildDecisionSystemPrompt(state) },
-      { role: 'user', content: `대통령의 결정/지시:\n"""${decision}"""\n\n위 결정의 결과를 JSON으로 산출하라. JSON은 반드시 완결된 형태여야 한다 (모든 괄호·따옴표 닫기).` },
+      { role: 'user', content: `대통령의 결정/지시:\n"""${decision}"""\n\n위 결정의 결과를 JSON으로 산출하라.
+필수: snsReactions(3개+), articlesByMedia(2개+) 모두 포함.
+JSON은 반드시 완결된 형태여야 한다 (모든 괄호·따옴표 닫기).` },
     ],
   });
 }
@@ -1069,21 +1076,73 @@ export function applyDecisionResult(
     effects: result.effects,
   };
 
-  // 언론 반응을 기사로 추가
-  const newArticles: NewsArticle[] = (result.mediaReactions ?? []).map(r => ({
-    id: genId('art'),
-    outlet: r.outlet,
-    headline: r.headline,
-    lead: `${r.outlet} 보도 - ${result.newsHeadline} 관련`,
+  // 언론 반응을 기사로 추가 (mediaReactions 간단 카드)
+  const newArticles: NewsArticle[] = [
+    ...(result.mediaReactions ?? []).map(r => ({
+      id: genId('art'),
+      outlet: r.outlet,
+      headline: r.headline,
+      lead: `${r.outlet} 보도 - ${result.newsHeadline} 관련`,
+      date: s.clock.currentDate,
+      category: 'POLITICS' as const,
+      bias: 0,
+    })),
+    // 매체별 본격 기사
+    ...((result.articlesByMedia ?? []).map(a => ({
+      id: genId('art'),
+      outlet: a.outlet,
+      headline: a.headline,
+      lead: a.lead,
+      body: a.body,
+      date: s.clock.currentDate,
+      category: (a.category ?? 'POLITICS') as any,
+      bias: a.bias ?? 0,
+    }))),
+  ];
+
+  // SNS 반응 추가
+  const newPosts: SnsPost[] = (result.snsReactions ?? []).map(p => ({
+    id: genId('post'),
+    platform: p.platform as any,
+    author: p.author,
+    handle: p.handle,
+    content: p.content,
+    likes: p.likes ?? 0,
+    reposts: p.reposts ?? 0,
+    comments: p.comments ?? 0,
+    sentiment: p.sentiment,
+    timestamp: s.clock.currentDate,
+  }));
+
+  // 국제 반응 추가
+  const newWorldEvents: WorldEvent[] = (result.worldReactions ?? []).map(w => ({
+    id: genId('we'),
     date: s.clock.currentDate,
-    category: 'POLITICS' as const,
-    bias: 0,
+    category: (w.category ?? 'DIPLOMACY') as any,
+    headline: w.headline,
+    body: w.body,
+    involvedCountries: w.involvedCountries ?? [],
+    koreaImpact: w.koreaImpact ?? 'MED',
+  }));
+
+  // 추가 사건 (시위·항의 등)
+  const moreEvents: GameEvent[] = (result.additionalEvents ?? []).map(e => ({
+    id: genId('evt'),
+    date: s.clock.currentDate,
+    category: (e.category ?? 'POLITICS') as any,
+    severity: (e.severity ?? 'MINOR') as any,
+    headline: e.headline,
+    body: e.body,
+    source: e.source ?? '청와대 출입기자단',
+    resolved: true,
   }));
 
   s = {
     ...s,
-    events: [evt, ...s.events].slice(0, 200),
+    events: [evt, ...moreEvents, ...s.events].slice(0, 200),
     articles: [...newArticles, ...s.articles].slice(0, 150),
+    sns: { ...s.sns, recentPosts: [...newPosts, ...s.sns.recentPosts].slice(0, 80) },
+    worldEvents: [...newWorldEvents, ...s.worldEvents].slice(0, 60),
   };
 
   if (result.advisorReply) {
@@ -1116,12 +1175,21 @@ export function applyDecisionResult(
   if (eff.sns?.sentiment !== undefined && eff.sns.sentiment !== 0) summaryParts.push(`SNS ${eff.sns.sentiment > 0 ? '+' : ''}${eff.sns.sentiment}`);
 
   const allLogs = [...summaryParts, ...actionLog];
-  if (allLogs.length > 0) {
+  const reactionLogs: string[] = [];
+  if ((result.snsReactions?.length ?? 0) > 0) reactionLogs.push(`SNS 반응 ${result.snsReactions!.length}개 (📱 SNS 탭)`);
+  if ((result.articlesByMedia?.length ?? 0) > 0) reactionLogs.push(`언론 기사 ${result.articlesByMedia!.length}건 (📰 언론 탭)`);
+  if ((result.worldReactions?.length ?? 0) > 0) reactionLogs.push(`국제 반응 ${result.worldReactions!.length}건 (🌐 국제 탭)`);
+  if ((result.additionalEvents?.length ?? 0) > 0) reactionLogs.push(`추가 사건 ${result.additionalEvents!.length}건 (📜 사건 탭)`);
+
+  if (allLogs.length > 0 || reactionLogs.length > 0) {
     const summary: ChatMessage = {
       id: genId('msg'),
       role: 'system',
       speaker: '게임 엔진',
-      content: `📊 적용된 변화\n${allLogs.map(x => '· ' + x).join('\n')}`,
+      content: [
+        allLogs.length > 0 ? '📊 적용된 변화\n' + allLogs.map(x => '· ' + x).join('\n') : '',
+        reactionLogs.length > 0 ? '\n\n💬 실시간 반응\n' + reactionLogs.map(x => '· ' + x).join('\n') : '',
+      ].join(''),
       timestamp: s.clock.currentDate,
       realTimestamp: new Date().toISOString(),
     };
@@ -1199,7 +1267,33 @@ export async function advanceTurn(state: GameState, days = 7): Promise<GameState
       if (warReport && warReport.status === 'fulfilled' && warReport.value) {
         const wr = warReport.value as { event: GameEvent; effects: PartialEffects };
         s = applyEffects(s, wr.effects);
-        s = { ...s, events: [wr.event, ...s.events].slice(0, 200) };
+        // 사건 로그 + 채팅에도 즉시 표시
+        const chatMsg: ChatMessage = {
+          id: genId('msg'),
+          role: 'advisor' as const,
+          speaker: '합참 작전상황보고관',
+          content: `🪖 ${wr.event.headline}\n\n${wr.event.body}`,
+          timestamp: s.clock.currentDate,
+          realTimestamp: new Date().toISOString(),
+          contextType: 'BRIEFING',
+        };
+        s = {
+          ...s,
+          events: [wr.event, ...s.events].slice(0, 200),
+          chat: [...s.chat, chatMsg].slice(-300),
+        };
+      } else if (mode === 'WAR' || mode === 'OPERATION') {
+        // AI 보고 생성 실패 시에도 기본 보고를 채팅에 표시
+        const fallback: ChatMessage = {
+          id: genId('msg'),
+          role: 'advisor' as const,
+          speaker: '합참 작전상황보고관',
+          content: `🪖 ${s.clock.currentDate} 작전 상황\n\n오늘 자동 보고 생성에 실패했습니다. ${mode === 'WAR' ? '전쟁' : '작전'} 모드는 계속됩니다. 코스피·환율·국고·군 준비태세에 일일 피해가 자동 적용됐습니다.`,
+          timestamp: s.clock.currentDate,
+          realTimestamp: new Date().toISOString(),
+          contextType: 'BRIEFING',
+        };
+        s = { ...s, chat: [...s.chat, fallback].slice(-300) };
       }
     } catch (err) {
       console.error('자동 생성 실패', err);
