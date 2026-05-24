@@ -771,6 +771,11 @@ export interface WorldEvent {
   body: string;
   involvedCountries: string[];
   koreaImpact: 'NONE' | 'LOW' | 'MED' | 'HIGH';
+  effects?: PartialEffects;
+  countryRelationChanges?: {
+    countries: [string, string];
+    delta: number;
+  }[];
 }
 
 // ---------------- 조약 ----------------

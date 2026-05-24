@@ -7,6 +7,8 @@ import { MINISTRY_CATEGORY } from '../data/ministries';
 import { CONTINENT_NAME } from '../data/countries';
 import { CONFIRMATION_REQUIRED, NOMINEE_POOL } from '../data/adminBodies';
 import { TRADE_BY_COUNTRY } from '../data/trade';
+import type { SubRegion } from '../data/subRegions';
+import { SubRegionDetailModal, TradePolicyModal, type TradePolicyType } from './DetailModals';
 import type { Continent, MinistryId, BuildingCategory, RegionId, AllianceStatus, WeaponEntry } from '../types/game';
 
 const TABS = [
@@ -765,6 +767,7 @@ function AdminTab() {
   const appointCustom = useGame(s => s.appointCustom);
   const resignOfficial = useGame(s => s.resignOfficial);
   const completeAdminTask = useGame(s => s.completeAdminTask);
+  const autoAppointAll = useGame(s => s.autoAppointAll);
   const [pickedBodyId, setPickedBody] = useState<MinistryId | null>(null);
   const [customName, setCustomName] = useState('');
   const [customBio, setCustomBio] = useState('');
@@ -786,7 +789,15 @@ function AdminTab() {
   return (
     <>
       <Panel title={`행정 조직 (${adminBodies.length}개)`} right={
-        <span className="text-[10px] text-red-300">{vacantCount}개 공석</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-red-300">{vacantCount}개 공석</span>
+          {vacantCount > 0 && (
+            <button onClick={() => { if (confirm(`공석 ${vacantCount}개 부처에 권장 후보를 일괄 자동 임명하시겠습니까?`)) autoAppointAll(); }}
+              className="text-[10px] bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-0.5 rounded">
+              🤖 자동 임명
+            </button>
+          )}
+        </div>
       }>
         <div className="space-y-2">
           {(['대통령실','국무총리실','부','처','청','위원회','독립기관'] as const).map(cat => {
@@ -1075,6 +1086,7 @@ function RegionsTab() {
   const busy = useGame(s => s.busy);
   const [pickedId, setPicked] = useState<RegionId | null>(null);
   const [subFilter, setSubFilter] = useState('');
+  const [pickedSub, setPickedSub] = useState<SubRegion | null>(null);
   const picked = regions.find(r => r.id === pickedId);
   const subsOfPicked = picked ? subRegions.filter(s => s.parentRegion === picked.id) : [];
   const filteredSubs = subsOfPicked.filter(s => !subFilter || s.name.includes(subFilter) || s.mayor.includes(subFilter));
@@ -1160,7 +1172,8 @@ function RegionsTab() {
                 {filteredSubs.map(sr => {
                   const party = parties.find(p => p.id === sr.mayorParty);
                   return (
-                    <div key={sr.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-[11px]">
+                    <button key={sr.id} onClick={() => setPickedSub(sr)}
+                      className="w-full text-left bg-slate-950/40 border border-slate-800 hover:border-blue-500 rounded p-1.5 text-[11px] transition-colors">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1 min-w-0">
                           <span className="w-2 h-2 rounded shrink-0" style={{ background: party?.color }} />
@@ -1176,7 +1189,7 @@ function RegionsTab() {
                         <div className="text-[10px] text-slate-500 mt-0.5">{sr.industries.join(' · ')}</div>
                       )}
                       {sr.notable && <div className="text-[10px] text-emerald-300/80 mt-0.5">{sr.notable}</div>}
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -1205,6 +1218,7 @@ function RegionsTab() {
           </div>
         </Panel>
       )}
+      {pickedSub && <SubRegionDetailModal sub={pickedSub} onClose={() => setPickedSub(null)} />}
     </>
   );
 }
@@ -1482,6 +1496,7 @@ function TradeTab() {
   const issueDecision = useGame(s => s.issueDecision);
   const busy = useGame(s => s.busy);
   const [pickedId, setPicked] = useState<string | null>('US');
+  const [policyModal, setPolicyModal] = useState<{ type: TradePolicyType } | null>(null);
 
   const countriesWithTrade = countries
     .map(c => ({ country: c, profile: TRADE_BY_COUNTRY[c.id] }))
@@ -1622,23 +1637,27 @@ function TradeTab() {
             </div>
           </div>
           <div className="mt-3 pt-2 border-t border-slate-800">
-            <div className="text-[10px] text-slate-500 mb-1">무역 정책 (결정 모드)</div>
+            <div className="text-[10px] text-slate-500 mb-1">⚙️ 무역 정책 (세부 설정 모달)</div>
             <div className="grid grid-cols-2 gap-1">
-              <button disabled={!!busy} onClick={() => issueDecision(`${picked.country.name}과의 FTA 협상을 추진/심화한다.`, `${picked.country.name} FTA`)}
-                className="btn text-[10px] py-1 disabled:opacity-40">📋 FTA 협상</button>
-              <button disabled={!!busy} onClick={() => issueDecision(`${picked.country.name}과의 자원·핵심소재 협력을 강화한다.`, `${picked.country.name} 자원협력`)}
-                className="btn text-[10px] py-1 disabled:opacity-40">⛏️ 자원협력</button>
-              <button disabled={!!busy} onClick={() => issueDecision(`${picked.country.name}으로의 수출 다변화·신규 진출 패키지를 발표한다.`, `${picked.country.name} 수출확대`)}
-                className="btn text-[10px] py-1 disabled:opacity-40">📈 수출 확대</button>
-              <button disabled={!!busy} onClick={() => issueDecision(`${picked.country.name}에 대한 반덤핑·세이프가드 조사를 개시한다.`, `${picked.country.name} 반덤핑`)}
-                className="btn text-[10px] py-1 disabled:opacity-40">⚖️ 반덤핑 조사</button>
-              <button disabled={!!busy} onClick={() => issueDecision(`${picked.country.name}산 ${picked.profile.importItems[0]?.category ?? '품목'}에 대한 수입 관세를 인상한다.`, `${picked.country.name} 관세인상`)}
-                className="btn-danger text-[10px] py-1 disabled:opacity-40">📈 관세 인상</button>
-              <button disabled={!!busy} onClick={() => issueDecision(`${picked.country.name}으로의 ${picked.profile.exportItems[0]?.category ?? '품목'} 수출 통제를 발동한다.`, `${picked.country.name} 수출통제`)}
-                className="btn-danger text-[10px] py-1 disabled:opacity-40">🚫 수출 통제</button>
+              <button disabled={!!busy} onClick={() => setPolicyModal({ type: 'FTA' })}
+                className="btn text-[10px] py-1.5 disabled:opacity-40">🤝 FTA 협상...</button>
+              <button disabled={!!busy} onClick={() => setPolicyModal({ type: 'RESOURCE' })}
+                className="btn text-[10px] py-1.5 disabled:opacity-40">⛏️ 자원 협력...</button>
+              <button disabled={!!busy} onClick={() => setPolicyModal({ type: 'EXPORT_EXPAND' })}
+                className="btn text-[10px] py-1.5 disabled:opacity-40">📈 수출 확대...</button>
+              <button disabled={!!busy} onClick={() => setPolicyModal({ type: 'ANTIDUMPING' })}
+                className="btn text-[10px] py-1.5 disabled:opacity-40">⚖️ 반덤핑...</button>
+              <button disabled={!!busy} onClick={() => setPolicyModal({ type: 'TARIFF_UP' })}
+                className="btn-danger text-[10px] py-1.5 disabled:opacity-40">📈 관세 인상...</button>
+              <button disabled={!!busy} onClick={() => setPolicyModal({ type: 'EXPORT_CONTROL' })}
+                className="btn-danger text-[10px] py-1.5 disabled:opacity-40">🚫 수출 통제...</button>
             </div>
+            <div className="text-[10px] text-slate-500 mt-1">💡 각 버튼은 세부 설정 모달을 엽니다. 옵션 조정 후 확정.</div>
           </div>
         </Panel>
+      )}
+      {policyModal && picked && (
+        <TradePolicyModal country={picked.country} profile={picked.profile} type={policyModal.type} onClose={() => setPolicyModal(null)} />
       )}
     </>
   );

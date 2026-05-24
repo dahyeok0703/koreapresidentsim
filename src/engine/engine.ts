@@ -208,8 +208,27 @@ ${state.international.ongoingConflicts.map(c => `- ${c.name} (${c.status}, 강�
 [주요국 정상]
 ${state.countries.slice(0, 30).map(c => `${c.name}: ${c.leader}`).join(', ')}` },
       { role: 'user', content: `${state.clock.currentDate} 기준, 새로운 국제 정세 이벤트 ${count}개 생성.
+각 이벤트는 한국과 다른 국가들에 실질적 영향을 미친다. effects는 변화량(delta) 기반.
 
-JSON: {"events":[{"category":"DIPLOMACY|WAR|ECONOMY|DOMESTIC|TECH|DISASTER|LEADERSHIP|TREATY","headline":"한국 신문 국제면 헤드라인","body":"2~3문장 본문","involvedCountries":["US","CN","..."],"koreaImpact":"NONE|LOW|MED|HIGH"}]}` },
+JSON: {"events":[
+  {
+    "category":"DIPLOMACY|WAR|ECONOMY|DOMESTIC|TECH|DISASTER|LEADERSHIP|TREATY",
+    "headline":"한국 신문 국제면 헤드라인",
+    "body":"2~3문장 본문",
+    "involvedCountries":["US","CN","..."],
+    "koreaImpact":"NONE|LOW|MED|HIGH",
+    "effects": {
+      // koreaImpact에 비례한 한국 영향
+      "approval"?: -2~+2, "economy"?: { "kospi"?: ±, "fxUsdKrw"?: ±, "consumerConfidence"?: ± },
+      "security"?: { "northKoreaTension"?: ±, "cyberThreatLevel"?: ± },
+      "foreign"?: { "US"?: {"relation":±, "trust":±}, "CN"?: {...}, ... }
+    },
+    "countryRelationChanges": [
+      // 외국끼리의 관계 변화 (한국 무관). 예: 트럼프 EU 관세 → US-EU 관계 악화
+      { "countries": ["US","EU"], "delta": -8 }
+    ]
+  }
+]}` },
     ],
   });
   return (data.events ?? []).map(e => ({
@@ -220,6 +239,8 @@ JSON: {"events":[{"category":"DIPLOMACY|WAR|ECONOMY|DOMESTIC|TECH|DISASTER|LEADE
     body: String(e.body ?? ''),
     involvedCountries: Array.isArray(e.involvedCountries) ? e.involvedCountries : [],
     koreaImpact: (e.koreaImpact ?? 'LOW') as any,
+    effects: e.effects,
+    countryRelationChanges: Array.isArray(e.countryRelationChanges) ? e.countryRelationChanges : undefined,
   }));
 }
 
@@ -1412,7 +1433,32 @@ export async function advanceTurn(state: GameState, days = 7): Promise<GameState
         s = { ...s, articles: [...(articles.value as NewsArticle[]), ...s.articles].slice(0, 150) };
       }
       if (worldEvents.status === 'fulfilled') {
-        s = { ...s, worldEvents: [...(worldEvents.value as WorldEvent[]), ...s.worldEvents].slice(0, 60) };
+        const wes = worldEvents.value as WorldEvent[];
+        // 각 국제 이벤트의 effects 즉시 적용 + 외국끼리 관계 변화 처리
+        for (const we of wes) {
+          if (we.effects) s = applyEffects(s, we.effects);
+          if (we.countryRelationChanges) {
+            // 외국-외국 관계는 두 국가의 recentEvents에 기록
+            for (const ch of we.countryRelationChanges) {
+              const [a, b] = ch.countries;
+              s = {
+                ...s,
+                countries: s.countries.map(c => {
+                  if (c.id === a || c.id === b) {
+                    const otherId = c.id === a ? b : a;
+                    const otherName = s.countries.find(x => x.id === otherId)?.name ?? otherId;
+                    return {
+                      ...c,
+                      recentEvents: [`${otherName}과 관계 ${ch.delta > 0 ? '+' : ''}${ch.delta}: ${we.headline.slice(0, 30)}`, ...c.recentEvents].slice(0, 5),
+                    };
+                  }
+                  return c;
+                }),
+              };
+            }
+          }
+        }
+        s = { ...s, worldEvents: [...wes, ...s.worldEvents].slice(0, 60) };
       }
       if (retaliations && retaliations.status === 'fulfilled') {
         const ret = retaliations.value as { events: GameEvent[]; effectsAll: PartialEffects[] };

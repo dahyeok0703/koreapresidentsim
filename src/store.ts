@@ -7,6 +7,7 @@ import type {
 import { saveCurrent, loadCurrent } from './db/storage';
 import { loadStoredUser, signOutGoogle, type GoogleUser } from './api/googleAuth';
 import { genId, randomKoreanName, NOMINEE_POOL, buildNewTermState } from './data/initialState';
+import { CONFIRMATION_REQUIRED } from './data/adminBodies';
 
 export type EncounterType = 'CALL' | 'SUMMIT' | 'EMERGENCY' | 'SUMMIT_GROUP';
 
@@ -116,6 +117,9 @@ interface UIState {
   user: GoogleUser | null;
   setUser: (u: GoogleUser | null) => void;
   signOut: () => void;
+
+  // 행정부 일괄 자동 임명
+  autoAppointAll: () => void;
 }
 
 export const useGame = create<UIState>((set, get) => ({
@@ -131,6 +135,49 @@ export const useGame = create<UIState>((set, get) => ({
 
   setUser(u) { set({ user: u }); },
   signOut() { signOutGoogle(); set({ user: null }); },
+
+  autoAppointAll() {
+    get().patch(s => {
+      const today = s.clock.currentDate;
+      let appointed = 0;
+      const cabinet = s.cabinet.map(o => {
+        if (o.confirmed || !CONFIRMATION_REQUIRED.includes(o.ministry)) return o;
+        const pool = (NOMINEE_POOL as any)[o.ministry] ?? [];
+        if (pool.length === 0) return o;
+        const cand = pool[0];
+        appointed++;
+        return {
+          ...o,
+          id: genId('off'),
+          name: cand.name,
+          party: s.president.party,
+          loyalty: cand.loyalty,
+          competence: cand.competence,
+          publicFavor: 55 + Math.floor(Math.random() * 15) - cand.risk / 5,
+          scandalRisk: cand.risk,
+          appointedAt: today,
+          bio: cand.bio,
+          age: 55 + Math.floor(Math.random() * 12),
+          education: '서울대학교 졸업',
+          confirmed: true,
+        };
+      });
+      if (appointed === 0) return s;
+      const evt = {
+        id: genId('evt'),
+        date: today,
+        category: 'POLITICS' as const,
+        severity: 'MODERATE' as const,
+        headline: `[일괄 인선] ${appointed}개 부처 장관 후보 동시 지명`,
+        body: `대통령이 공석 ${appointed}개 부처에 권장 후보를 일괄 지명했다. 야권은 청문회에서 검증할 방침이다.`,
+        source: '청와대 인사수석실',
+        resolved: true,
+      };
+      const flags = { ...s.flags };
+      if (cabinet.filter(o => o.confirmed).length >= 10) flags.cabinetSetupComplete = true;
+      return { ...s, cabinet, flags, events: [evt, ...s.events].slice(0, 200) };
+    });
+  },
 
   init(state) { set({ state, undoStack: [] }); saveCurrent(state); },
 
