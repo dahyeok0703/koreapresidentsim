@@ -223,6 +223,52 @@ JSON: {"events":[{"category":"DIPLOMACY|WAR|ECONOMY|DOMESTIC|TECH|DISASTER|LEADE
   }));
 }
 
+// ---- AI: 법령 상세 설명 생성 ----
+export async function generateLawExplanation(
+  state: GameState,
+  law: import('../data/laws').Law,
+): Promise<string> {
+  const sys = `당신은 대한민국 법률 전문가다. 주어진 법률에 대해 일반 시민도 이해할 수 있도록 상세 설명을 작성하라.
+
+[형식 — 마크다운 없이 문장으로]
+1) 입법 목적 (1~2문장)
+2) 주요 조항·핵심 내용 (3~5개 항목, 각 1문장)
+3) 시행 효과·실생활 영향 (2~3문장)
+4) 주요 논쟁점·찬반 (해당 시 2~4문장)
+5) 최근 동향 (개정·판례·논의)
+
+[규칙]
+- 한국어로 작성. 법률 용어는 풀어 설명.
+- 정확한 사실 기반. 추측·창작 금지.
+- 분량: 12~20 문장 이내.
+- 정파 편향 없이 객관적 서술. 단 논쟁점은 양측 입장 모두 기재.`;
+
+  const lawCtx = `[법률명] ${law.name}
+${law.abbrev ? `[약칭] ${law.abbrev}\n` : ''}[분야] ${law.category}
+[제정] ${law.enacted}년
+[최종 개정] ${law.lastAmended}년
+[현재 상태] ${law.status}
+[논쟁도] ${law.controversyLevel}/100
+[간단 요지] ${law.desc}
+
+${law.status === 'AMENDED' && law.lastAmended >= 2025
+  ? `\n[중요] 이 법률은 ${state.president.name} 대통령(${state.parties.find(p => p.id === state.president.party)?.name}, 이념 ${state.president.ideology}) 임기 중 최근 개정됐다. 개정 방향과 현재 시행 효과를 반영해 설명하라.`
+  : law.status === 'REPEALED'
+  ? `\n[중요] 이 법률은 현재 폐지된 상태. 폐지 전 시행 내용·폐지 사유·후속 입법 동향을 설명하라.`
+  : ''}`;
+
+  return openaiChat({
+    apiKey: state.settings.openaiApiKey,
+    model: state.settings.model,
+    temperature: 0.5,
+    maxTokens: 1500,
+    messages: [
+      { role: 'system', content: sys },
+      { role: 'user', content: lawCtx + '\n\n위 법률에 대한 상세 설명을 작성하라.' },
+    ],
+  });
+}
+
 // ---- AI: 외국 정상의 대화 응답 ----
 export async function askForeignLeader(
   state: GameState,
@@ -1137,20 +1183,23 @@ export function applyAIActions(state: GameState, actions: AIAction[] | undefined
           const nameMatch = String(p.nameMatch || '');
           if (!nameMatch) break;
           let n = 0;
+          const newYear = new Date(s.clock.currentDate).getFullYear();
           s = { ...s, laws: s.laws.map(l => {
             if (l.name.includes(nameMatch)) {
               n++;
               return {
                 ...l,
                 status: 'AMENDED' as const,
-                lastAmended: new Date(s.clock.currentDate).getFullYear(),
+                lastAmended: newYear,
                 desc: p.newDesc ? String(p.newDesc) : l.desc,
                 controversyLevel: p.newControversy !== undefined ? Number(p.newControversy) : l.controversyLevel,
+                fullExplanation: undefined,         // AI 설명 캐시 무효화
+                explanationVersion: undefined,
               };
             }
             return l;
           }) };
-          log.push(`📝 법률 개정: ${n}건 "${nameMatch}"`);
+          log.push(`📝 법률 개정: ${n}건 "${nameMatch}" — 상세 설명 캐시 무효화됨`);
           break;
         }
       }

@@ -1819,10 +1819,27 @@ function ElectionsTab() {
 function LawsTab() {
   const laws = useGame(s => s.state!.laws);
   const issueDecision = useGame(s => s.issueDecision);
+  const explainLaw = useGame(s => s.explainLaw);
+  const busyLawIds = useGame(s => s.busyLawIds);
   const busy = useGame(s => s.busy);
   const [filter, setFilter] = useState('');
   const [cat, setCat] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'REPEALED' | 'AMENDED'>('ACTIVE');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggle = (id: string) => {
+    const ns = new Set(expanded);
+    if (ns.has(id)) ns.delete(id); else ns.add(id);
+    setExpanded(ns);
+    // 펼치면서 캐시 없으면 자동 생성
+    const law = laws.find(l => l.id === id);
+    if (law && !ns.has(id) === false) {
+      const stale = !law.fullExplanation || law.explanationVersion !== law.lastAmended;
+      if (stale && !busyLawIds.has(id)) {
+        explainLaw(id);
+      }
+    }
+  };
 
   const categories = Array.from(new Set(laws.map(l => l.category)));
   const list = laws
@@ -1872,26 +1889,61 @@ function LawsTab() {
                 {category} ({items.length})
               </div>
               <div className="space-y-1">
-                {items.map(l => (
-                  <div key={l.id} className="bg-slate-950/40 border border-slate-800 rounded p-1.5 text-xs">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="font-semibold text-slate-100">{l.name}</span>
-                      <span className={`text-[9px] px-1 py-0.5 rounded border ${statusColor[l.status]}`}>{l.status}</span>
+                {items.map(l => {
+                  const isOpen = expanded.has(l.id);
+                  const isBusy = busyLawIds.has(l.id);
+                  const isStale = l.fullExplanation && l.explanationVersion !== l.lastAmended;
+                  return (
+                    <div key={l.id} className="bg-slate-950/40 border border-slate-800 rounded text-xs overflow-hidden">
+                      <button onClick={() => toggle(l.id)} className="w-full text-left p-1.5 hover:bg-slate-900/50">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="font-semibold text-slate-100 flex items-center gap-1">
+                            <span className="text-slate-500">{isOpen ? '▼' : '▶'}</span>
+                            {l.name}
+                          </span>
+                          <span className={`text-[9px] px-1 py-0.5 rounded border ${statusColor[l.status]}`}>{l.status}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          {l.abbrev && `[${l.abbrev}] · `}
+                          제정 {l.enacted}년 · 최종개정 {l.lastAmended}년
+                          {l.controversyLevel >= 50 && <span className="text-orange-300 ml-1">· 논쟁도 {l.controversyLevel}</span>}
+                          {l.fullExplanation && !isStale && <span className="text-emerald-300 ml-1">· 🤖 AI 설명 캐시됨</span>}
+                          {isStale && <span className="text-amber-300 ml-1">· ⚠️ 개정으로 캐시 무효</span>}
+                        </div>
+                        <div className="text-[11px] text-slate-300 mt-0.5">{l.desc}</div>
+                      </button>
+                      {isOpen && (
+                        <div className="border-t border-slate-800 p-2 bg-slate-950/60">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] text-blue-300 font-semibold">📚 AI 상세 설명</span>
+                            <button onClick={() => explainLaw(l.id)} disabled={isBusy}
+                              className="text-[10px] text-blue-300 hover:text-blue-200 disabled:opacity-40">
+                              {isBusy ? '생성 중…' : (l.fullExplanation ? '🔄 새로 생성' : '✨ 설명 생성')}
+                            </button>
+                          </div>
+                          {isBusy && (
+                            <div className="text-[11px] text-slate-400 animate-pulse">법률 전문가가 분석 중입니다...</div>
+                          )}
+                          {!isBusy && l.fullExplanation && (
+                            <div className="text-[11px] text-slate-200 leading-relaxed whitespace-pre-wrap">
+                              {l.fullExplanation}
+                            </div>
+                          )}
+                          {!isBusy && !l.fullExplanation && (
+                            <div className="text-[11px] text-slate-500">설명이 아직 생성되지 않았습니다. 위 버튼을 눌러 AI에 요청하세요.</div>
+                          )}
+                          <div className="flex gap-1 mt-2 pt-2 border-t border-slate-800">
+                            <button disabled={!!busy} onClick={() => issueDecision(`${l.name}을(를) 개정한다. 시대 변화에 맞춰 핵심 조항을 정비한다.`, `${l.name} 개정`)}
+                              className="text-[10px] text-yellow-400 hover:text-yellow-300 disabled:opacity-40">📝 개정</button>
+                            <button disabled={!!busy} onClick={() => issueDecision(`${l.name}을(를) 폐지한다.`, `${l.name} 폐지`)}
+                              className="text-[10px] text-red-400 hover:text-red-300 disabled:opacity-40">🗑️ 폐지</button>
+                            <span className="text-[9px] text-slate-500 ml-auto">개정·폐지 후 AI 설명 자동 재생성</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-[10px] text-slate-500">
-                      {l.abbrev && `[${l.abbrev}] · `}
-                      제정 {l.enacted}년 · 최종개정 {l.lastAmended}년
-                      {l.controversyLevel >= 50 && <span className="text-orange-300 ml-1">· 논쟁도 {l.controversyLevel}</span>}
-                    </div>
-                    <div className="text-[11px] text-slate-300 mt-0.5">{l.desc}</div>
-                    <div className="flex gap-1 mt-1">
-                      <button disabled={!!busy} onClick={() => issueDecision(`${l.name}을(를) 개정한다. 시대 변화에 맞춰 핵심 조항을 정비한다.`, `${l.name} 개정`)}
-                        className="text-[10px] text-yellow-400 hover:text-yellow-300 disabled:opacity-40">개정</button>
-                      <button disabled={!!busy} onClick={() => issueDecision(`${l.name}을(를) 폐지한다.`, `${l.name} 폐지`)}
-                        className="text-[10px] text-red-400 hover:text-red-300 disabled:opacity-40">폐지</button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}

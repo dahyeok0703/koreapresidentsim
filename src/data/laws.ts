@@ -18,6 +18,8 @@ export interface Law {
   desc: string;
   status: 'ACTIVE' | 'REPEALED' | 'AMENDED' | 'PROPOSED';
   controversyLevel: number; // 0-100
+  fullExplanation?: string;             // AI가 생성한 상세 설명 (입법목적·주요조항·효과·논쟁점)
+  explanationVersion?: number;          // lastAmended가 바뀌면 무효화
 }
 
 let _i = 1;

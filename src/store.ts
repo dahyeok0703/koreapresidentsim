@@ -29,7 +29,7 @@ export interface DiplomaticEncounter {
 import { MINISTRY_NAMES } from './data/ministries';
 import {
   advanceTurn, askAdvisor, evaluateDecision, applyDecisionResult, resolveEventChoice,
-  askForeignLeader, finalizeDiplomaticEncounter,
+  askForeignLeader, finalizeDiplomaticEncounter, generateLawExplanation,
 } from './engine/engine';
 import { applyEffects } from './engine/effects';
 
@@ -106,6 +106,10 @@ interface UIState {
   openEncounter: (countryId: string, type: EncounterType) => void;
   sendEncounterMessage: (text: string) => Promise<void>;
   closeEncounter: (finalize: boolean) => Promise<void>;
+
+  // 법령 AI 설명
+  explainLaw: (lawId: string) => Promise<void>;
+  busyLawIds: Set<string>;
 }
 
 export const useGame = create<UIState>((set, get) => ({
@@ -116,6 +120,7 @@ export const useGame = create<UIState>((set, get) => ({
   selectedEventId: null,
   undoStack: [],
   encounter: null,
+  busyLawIds: new Set(),
 
   init(state) { set({ state, undoStack: [] }); saveCurrent(state); },
 
@@ -694,6 +699,32 @@ export const useGame = create<UIState>((set, get) => ({
         id: genId('em'), role: 'SYSTEM' as const, speaker: '시스템',
         content: `통신 오류: ${e.message}`, timestamp: s.clock.currentDate,
       }] } });
+    }
+  },
+
+  async explainLaw(lawId) {
+    const s = get().state;
+    if (!s) return;
+    const law = s.laws.find(l => l.id === lawId);
+    if (!law) return;
+    // busy mark
+    const bset = new Set(get().busyLawIds);
+    bset.add(lawId);
+    set({ busyLawIds: bset });
+    try {
+      const explanation = await generateLawExplanation(s, law);
+      get().patchNoUndo(st => ({
+        ...st,
+        laws: st.laws.map(l => l.id === lawId
+          ? { ...l, fullExplanation: explanation, explanationVersion: l.lastAmended }
+          : l),
+      }));
+    } catch (e: any) {
+      set({ error: `법령 설명 생성 실패: ${e.message}` });
+    } finally {
+      const bs = new Set(get().busyLawIds);
+      bs.delete(lawId);
+      set({ busyLawIds: bs });
     }
   },
 
