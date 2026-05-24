@@ -578,6 +578,7 @@ function MilitaryTab() {
 function DiplomacyTab() {
   const countries = useGame(s => s.state!.countries);
   const issueDecision = useGame(s => s.issueDecision);
+  const openEncounter = useGame(s => s.openEncounter);
   const busy = useGame(s => s.busy);
   const [continent, setContinent] = useState<Continent | 'ALL'>('ALL');
   const [filter, setFilter] = useState('');
@@ -658,12 +659,21 @@ function DiplomacyTab() {
             <ul className="text-[11px] text-slate-300 mt-0.5 space-y-0.5">{picked.recentEvents.map((r, i) => <li key={i}>· {r}</li>)}</ul>
           </>)}
           <div className="mt-3 pt-2 border-t border-slate-800">
-            <div className="text-[10px] text-slate-500 mb-1">외교 행동 (결정 모드로 전송)</div>
+            <div className="text-[10px] text-slate-500 mb-1">⚡ 실시간 외교 (중앙 모달에서 직접 대화)</div>
             <div className="grid grid-cols-2 gap-1">
-              <button disabled={!!busy} onClick={() => issueDecision(`${picked.leader} ${picked.name} ${picked.leaderTitle}과 정상 통화를 진행한다. 양국 협력 방안 논의.`, `${picked.name} 정상통화`)}
-                className="btn text-[10px] py-1 disabled:opacity-40">📞 정상통화</button>
-              <button disabled={!!busy} onClick={() => issueDecision(`${picked.name} ${picked.leader}에게 정상회담을 공식 제안한다.`, `${picked.name} 정상회담 제안`)}
-                className="btn text-[10px] py-1 disabled:opacity-40">🤝 정상회담 제안</button>
+              <button disabled={!!busy} onClick={() => openEncounter(picked.id, 'CALL')}
+                className="btn-primary text-[10px] py-1.5 disabled:opacity-40">📞 정상 통화 (실시간)</button>
+              <button disabled={!!busy} onClick={() => openEncounter(picked.id, 'SUMMIT')}
+                className="btn-primary text-[10px] py-1.5 disabled:opacity-40">🤝 정상 회담 (실시간)</button>
+              <button disabled={!!busy} onClick={() => openEncounter(picked.id, 'EMERGENCY')}
+                className="btn-danger text-[10px] py-1.5 disabled:opacity-40">🚨 긴급 핫라인</button>
+              <button disabled={!!busy} onClick={() => openEncounter(picked.id, 'SUMMIT_GROUP')}
+                className="btn-primary text-[10px] py-1.5 disabled:opacity-40">🏛️ 다자 정상회의</button>
+            </div>
+          </div>
+          <div className="mt-2 pt-2 border-t border-slate-800">
+            <div className="text-[10px] text-slate-500 mb-1">외교 행동 (즉시 결정 모드)</div>
+            <div className="grid grid-cols-2 gap-1">
               <button disabled={!!busy} onClick={() => issueDecision(`${picked.name}과의 경제 협력 (교역 확대·FTA 협의·투자 유치)을 강화한다.`, `${picked.name} 경제협력`)}
                 className="btn text-[10px] py-1 disabled:opacity-40">💼 경제협력 강화</button>
               <button disabled={!!busy} onClick={() => issueDecision(`${picked.name}에 인도적 지원(의료·식량·재건)을 공식 제공한다.`, `${picked.name} 인도적 지원`)}

@@ -223,6 +223,114 @@ JSON: {"events":[{"category":"DIPLOMACY|WAR|ECONOMY|DOMESTIC|TECH|DISASTER|LEADE
   }));
 }
 
+// ---- AI: 외국 정상의 대화 응답 ----
+export async function askForeignLeader(
+  state: GameState,
+  countryId: string,
+  type: 'CALL' | 'SUMMIT' | 'EMERGENCY' | 'SUMMIT_GROUP',
+  history: { role: 'PRESIDENT' | 'FOREIGN' | 'SYSTEM'; speaker: string; content: string }[],
+  userMessage: string,
+): Promise<string> {
+  const country = state.countries.find(c => c.id === countryId);
+  if (!country) return '(상대국 정보 없음)';
+  const personalityHint = (() => {
+    if (country.alliance === 'ALLY') return '동맹국 정상으로서 우호적이지만 자국 이익도 챙김. 솔직하되 외교적 예의.';
+    if (country.alliance === 'PARTNER') return '협력국 정상. 실리 위주. 한국과의 협력을 중시하지만 거래 조건을 따짐.';
+    if (country.alliance === 'NEUTRAL') return '중립국 정상. 균형 외교. 어느 한쪽에 치우치지 않음.';
+    if (country.alliance === 'RIVAL') return '경쟁국 정상. 표면적으로 외교적이지만 견제·기싸움. 자국 이익 노골적으로 추구.';
+    if (country.alliance === 'HOSTILE') return '적대국 정상. 도발적·강압적. 비난·위협·요구를 섞어 말함. 단 외교 형식은 유지.';
+    return '실용주의자.';
+  })();
+  const leaderStyles: Record<string, string> = {
+    US: '트럼프 스타일: 짧고 직설적. "Tremendous, terrible" 같은 형용사. 거래·관세 강조. 자기 자랑 빈도 높음.',
+    CN: '시진핑/중국 외교: 무게있고 격식. "양국 관계 대국" 강조. 일대일로·다자주의 언급. 핵심이익 단호.',
+    JP: '이시바/일본 외교: 공손하고 신중. 역사·과거 언급은 회피. 안보·경제 협력 강조.',
+    NK: '김정은: 위협·과시·자국 위대성 강조. "남조선" 표현. 핵·미사일 언급. 가끔 갑작스러운 회유.',
+    RU: '푸틴: 차갑고 비꼬는 톤. 서방 비난. 강한 자세. 영토·세력권 강조.',
+  };
+  const styleNote = leaderStyles[countryId] ?? '';
+
+  const sys = `당신은 ${country.leader} ${country.leaderTitle} (${country.name})로 대한민국 대통령과 ${
+    type === 'CALL' ? '정상 통화' :
+    type === 'SUMMIT' ? '정상 회담' :
+    type === 'EMERGENCY' ? '긴급 핫라인' : '다자 정상회의'
+  } 중이다.
+
+[당신의 외교 캐릭터]
+- 국가: ${country.name} (${country.alliance})
+- 직위: ${country.leaderTitle}
+- 한국과의 관계: ${country.relation > 0 ? '+' : ''}${country.relation} / 신뢰 ${country.trustLevel}
+- 정부 형태: ${country.government}
+- 최근 양국 이슈: ${country.recentEvents.slice(0, 3).join(' / ') || '특이사항 없음'}
+- 캐릭터: ${personalityHint}
+${styleNote ? `- 어투: ${styleNote}` : ''}
+
+[규칙]
+- 한국 대통령의 발언에 외국 정상으로서 응답하라.
+- 한국어로 답하되, 외국 정상이 통역을 통해 말하는 느낌을 살릴 것.
+- 1~3 문장. 짧고 외교적.
+- 사용자(한국 대통령)가 말하지 않은 발언을 가정하지 말 것.
+- 양국 이익과 갈등을 사실적으로 반영.
+- ${type === 'EMERGENCY' ? '긴급 상황 — 짧고 단호한 어조.' : type === 'SUMMIT' ? '정상회담 — 공식적이고 정제된 어조.' : '통화 — 친근하지만 외교적인 어조.'}
+
+[금기]
+- "회담이 성공적으로 끝났다" 같은 결과 단정 금지 (회담은 아직 진행 중).
+- "이미 합의했다" 같은 임의 합의 만들지 말 것.`;
+
+  const chatHistory = history.slice(-12).map(h => ({
+    role: h.role === 'PRESIDENT' ? ('user' as const) : ('assistant' as const),
+    content: h.role === 'PRESIDENT'
+      ? h.content
+      : `[${h.speaker}] ${h.content}`,
+  }));
+
+  return openaiChat({
+    apiKey: state.settings.openaiApiKey,
+    model: state.settings.model,
+    temperature: 0.9,
+    maxTokens: 400,
+    messages: [
+      { role: 'system', content: sys },
+      ...chatHistory,
+      { role: 'user', content: userMessage },
+    ],
+  });
+}
+
+// ---- AI: 외교 회담 종료 + 결과 산출 ----
+export async function finalizeDiplomaticEncounter(
+  state: GameState,
+  countryId: string,
+  type: 'CALL' | 'SUMMIT' | 'EMERGENCY' | 'SUMMIT_GROUP',
+  transcript: { speaker: string; role: string; content: string }[],
+): Promise<DecisionResult> {
+  const country = state.countries.find(c => c.id === countryId);
+  const countryName = country?.name ?? countryId;
+  const transcriptText = transcript.map(m =>
+    `[${m.role === 'PRESIDENT' ? state.president.name + ' 대통령' : m.speaker}] ${m.content}`
+  ).join('\n');
+
+  const typeKor = type === 'CALL' ? '정상 통화' : type === 'SUMMIT' ? '정상 회담' : type === 'EMERGENCY' ? '긴급 핫라인' : '다자 정상회의';
+
+  return openaiJSON<DecisionResult>({
+    apiKey: state.settings.openaiApiKey,
+    model: state.settings.model,
+    temperature: 0.75,
+    maxTokens: 4500,
+    messages: [
+      { role: 'system', content: buildDecisionSystemPrompt(state) + `\n\n[특수 모드] 지금은 ${countryName}과의 ${typeKor} 종료 시점이다.
+대화 전체 내용을 분석하여 결과·합의·효과·언론·SNS·국제 반응을 산출하라.
+
+[추가 규칙]
+- 회담에서 실제로 논의/합의된 내용만 반영. 사용자가 말하지 않은 합의는 만들지 말 것.
+- 효과(effects.foreign)에 ${countryId} 관계·신뢰 변화 반드시 포함.
+- 회담이 격렬했으면 관계 -, 우호적이었으면 +.
+- SIGN_TREATY·ADD_TREATY 같은 actions 발행은 회담에서 명확히 합의된 경우만.` },
+      { role: 'user', content: `${typeKor} 전체 기록:\n"""\n${transcriptText}\n"""\n\n이 ${typeKor}의 결과를 JSON으로 산출하라. JSON 완결 필수.` },
+    ],
+  });
+}
+
 // ---- AI: 전쟁 / 군사작전 일일 보고 ----
 export async function generateWarReport(state: GameState): Promise<{
   event: GameEvent;

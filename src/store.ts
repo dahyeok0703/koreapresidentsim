@@ -6,9 +6,30 @@ import type {
 } from './types/game';
 import { saveCurrent, loadCurrent } from './db/storage';
 import { genId, randomKoreanName, NOMINEE_POOL, buildNewTermState } from './data/initialState';
+
+export type EncounterType = 'CALL' | 'SUMMIT' | 'EMERGENCY' | 'SUMMIT_GROUP';
+
+export interface DiplomaticEncounter {
+  countryId: string;
+  type: EncounterType;
+  messages: {
+    id: string;
+    role: 'PRESIDENT' | 'FOREIGN' | 'SYSTEM';
+    speaker: string;
+    content: string;
+    timestamp: string;
+  }[];
+  startedAt: string;
+  busy?: string;
+  outcome?: {
+    summary: string;
+    finalized: boolean;
+  };
+}
 import { MINISTRY_NAMES } from './data/ministries';
 import {
   advanceTurn, askAdvisor, evaluateDecision, applyDecisionResult, resolveEventChoice,
+  askForeignLeader, finalizeDiplomaticEncounter,
 } from './engine/engine';
 import { applyEffects } from './engine/effects';
 
@@ -19,6 +40,7 @@ interface UIState {
   error: string | null;
   selectedEventId: string | null;
   undoStack: GameState[];
+  encounter: DiplomaticEncounter | null;
   init: (state: GameState) => void;
   hydrate: () => void;
   reset: () => void;
@@ -79,6 +101,11 @@ interface UIState {
   // 차기 임기 시작 (5년 임기 종료 후)
   beginNewTerm: (profile: import('./types/game').PresidentProfile) => void;
   dismissTermEvaluation: () => void;
+
+  // 외교 회담·통화 (중앙 모달 대화)
+  openEncounter: (countryId: string, type: EncounterType) => void;
+  sendEncounterMessage: (text: string) => Promise<void>;
+  closeEncounter: (finalize: boolean) => Promise<void>;
 }
 
 export const useGame = create<UIState>((set, get) => ({
@@ -88,6 +115,7 @@ export const useGame = create<UIState>((set, get) => ({
   error: null,
   selectedEventId: null,
   undoStack: [],
+  encounter: null,
 
   init(state) { set({ state, undoStack: [] }); saveCurrent(state); },
 
@@ -607,6 +635,110 @@ export const useGame = create<UIState>((set, get) => ({
 
   dismissTermEvaluation() {
     get().patch(s => ({ ...s, flags: { ...s.flags, evalAcknowledged: true } }));
+  },
+
+  // ---------- 외교 회담·통화 ----------
+  openEncounter(countryId, type) {
+    const s = get().state;
+    if (!s) return;
+    const country = s.countries.find(c => c.id === countryId);
+    if (!country) return;
+    const typeName = type === 'CALL' ? '정상 통화' : type === 'SUMMIT' ? '정상 회담' : type === 'EMERGENCY' ? '긴급 핫라인' : '다자 정상회의';
+    const greeting = type === 'EMERGENCY'
+      ? `[긴급 핫라인 개설] ${country.leader} ${country.leaderTitle} 측이 연결을 기다리고 있습니다.`
+      : type === 'CALL'
+      ? `[정상 통화] ${country.name} ${country.leader} ${country.leaderTitle}과의 통화가 연결됐습니다. 첫 메시지를 입력하세요.`
+      : type === 'SUMMIT'
+      ? `[정상 회담] ${country.name} ${country.leader} ${country.leaderTitle}과의 정상회담이 시작됩니다. 의제를 제시하세요.`
+      : `[다자 정상회의] ${country.name}이 의장국으로 회의가 시작됐습니다.`;
+    set({
+      encounter: {
+        countryId,
+        type,
+        messages: [
+          { id: genId('em'), role: 'SYSTEM', speaker: '의전실', content: greeting, timestamp: s.clock.currentDate },
+        ],
+        startedAt: s.clock.currentDate,
+      },
+    });
+  },
+
+  async sendEncounterMessage(text) {
+    const enc = get().encounter;
+    const s = get().state;
+    if (!enc || !s) return;
+    const country = s.countries.find(c => c.id === enc.countryId);
+    if (!country) return;
+    const userMsg = {
+      id: genId('em'),
+      role: 'PRESIDENT' as const,
+      speaker: s.president.name,
+      content: text,
+      timestamp: s.clock.currentDate,
+    };
+    set({ encounter: { ...enc, messages: [...enc.messages, userMsg], busy: '응답 대기 중…' } });
+    try {
+      const reply = await askForeignLeader(s, enc.countryId, enc.type, enc.messages, text);
+      const foreignMsg = {
+        id: genId('em'),
+        role: 'FOREIGN' as const,
+        speaker: `${country.leader} (${country.leaderTitle})`,
+        content: reply,
+        timestamp: s.clock.currentDate,
+      };
+      const cur = get().encounter;
+      if (cur) set({ encounter: { ...cur, messages: [...cur.messages, foreignMsg], busy: undefined } });
+    } catch (e: any) {
+      const cur = get().encounter;
+      if (cur) set({ encounter: { ...cur, busy: undefined, messages: [...cur.messages, {
+        id: genId('em'), role: 'SYSTEM' as const, speaker: '시스템',
+        content: `통신 오류: ${e.message}`, timestamp: s.clock.currentDate,
+      }] } });
+    }
+  },
+
+  async closeEncounter(finalize) {
+    const enc = get().encounter;
+    const s = get().state;
+    if (!enc || !s) {
+      set({ encounter: null });
+      return;
+    }
+    const country = s.countries.find(c => c.id === enc.countryId);
+    const countryName = country?.name ?? enc.countryId;
+    const typeName = enc.type === 'CALL' ? '정상 통화' : enc.type === 'SUMMIT' ? '정상 회담' : enc.type === 'EMERGENCY' ? '긴급 핫라인' : '다자 정상회의';
+
+    if (!finalize || enc.messages.filter(m => m.role === 'PRESIDENT').length === 0) {
+      // 결과 반영 없이 닫기
+      get().pushChat({
+        role: 'system', speaker: '의전실',
+        content: `${countryName}과의 ${typeName}이(가) 결과 반영 없이 종료됐습니다.`,
+      });
+      set({ encounter: null });
+      return;
+    }
+    // 회담 종료 + AI 결과 산출
+    set({ encounter: { ...enc, busy: '회담 결과 분석 중…' } });
+    try {
+      const transcript = enc.messages.map(m => ({
+        speaker: m.speaker, role: m.role, content: m.content,
+      }));
+      const result = await finalizeDiplomaticEncounter(s, enc.countryId, enc.type, transcript);
+      get().patch(prev => applyDecisionResult(prev, result, `${countryName} ${typeName}`));
+      // 회담 전체 내용을 채팅에 요약 메시지로 push
+      const transcriptSummary = enc.messages
+        .filter(m => m.role !== 'SYSTEM')
+        .slice(0, 20)
+        .map(m => `· ${m.speaker}: "${m.content.length > 80 ? m.content.slice(0, 80) + '…' : m.content}"`)
+        .join('\n');
+      get().pushChat({
+        role: 'system', speaker: '의전실',
+        content: `📋 ${countryName} ${typeName} 종료\n\n주요 발언:\n${transcriptSummary}\n\n결과는 비서실장 보고·언론·SNS·국제 탭에 즉시 반영됨.`,
+      });
+      set({ encounter: null });
+    } catch (e: any) {
+      set({ error: e.message ?? String(e), encounter: { ...enc, busy: undefined } });
+    }
   },
 
   letBillProceed(billId) {
