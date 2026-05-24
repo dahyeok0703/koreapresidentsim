@@ -244,6 +244,70 @@ JSON: {"events":[
   }));
 }
 
+// ---- AI: 무역 상세 프로필 생성 (TRADE_PROFILES에 없는 국가) ----
+export async function generateTradeProfile(
+  state: GameState,
+  countryId: string,
+): Promise<import('../data/trade').TradeProfile> {
+  const country = state.countries.find(c => c.id === countryId);
+  if (!country) throw new Error('국가 정보 없음');
+  // Country.tradeVolumeUSD (총 교역 억$) 기반 추정. AI에게 정확한 비율 추정 위임.
+  const totalM = country.tradeVolumeUSD * 100;
+  const baseExport = Math.round(totalM * 0.5);
+  const baseImport = totalM - baseExport;
+
+  const sys = `당신은 대한민국 산업통상자원부 통상정책관이다. 한국과 ${country.name}의 양자 무역 구성을 분석한다.
+
+[기준 데이터]
+- 국가: ${country.name} (${country.continent}, 인구 ${country.population}만, GDP $${country.gdpUSD}B)
+- 정부: ${country.government}, 정상: ${country.leader}
+- 한국과 동맹지위: ${country.alliance}
+- 한국 → ${country.name} 수출: $${baseExport}M
+- 한국 ← ${country.name} 수입: $${baseImport}M
+- FTA: ${country.hasFTA ? '체결' : '없음'}
+- 교민: ${country.koreanResidents}명
+- 최근 이슈: ${country.recentEvents.slice(0, 3).join(', ')}
+
+[작성 규칙]
+- 그 나라의 산업 구조·자원·한국의 주력 수출품을 고려해 사실적으로 분해.
+- 한국 주요 수출: 반도체·자동차·자동차부품·디스플레이·석유화학·이차전지·철강·기계·방산·K-콘텐츠.
+- 한국 주요 수입: 원유·천연가스·철광석·석탄·반도체장비·항공기·의약품·농수산물·소재·의류 등 그 나라 특성에 맞춰.
+- exportItems·importItems 각각 2~5개. valueUSD 합계가 totalExport/totalImport에 근사.
+- riskLevel: 의존도 (CRITICAL/HIGH/MED/LOW).
+- 교역량이 0인 항목은 빈 배열로.`;
+
+  const data = await openaiJSON<{
+    notes: string; riskLevel: 'LOW' | 'MED' | 'HIGH' | 'CRITICAL';
+    exportItems: { category: string; valueUSD: number; share?: number }[];
+    importItems: { category: string; valueUSD: number; share?: number }[];
+  }>({
+    apiKey: state.settings.openaiApiKey,
+    model: state.settings.model,
+    temperature: 0.5,
+    maxTokens: 1200,
+    messages: [
+      { role: 'system', content: sys },
+      { role: 'user', content: `JSON 출력:
+{
+  "notes": "특이사항 1~2문장",
+  "riskLevel": "LOW|MED|HIGH|CRITICAL",
+  "exportItems": [{ "category": "...", "valueUSD": 숫자, "share": 0~100 }],
+  "importItems": [{ "category": "...", "valueUSD": 숫자, "share": 0~100 }]
+}` },
+    ],
+  });
+
+  return {
+    countryId,
+    totalExportUSD: baseExport,
+    totalImportUSD: baseImport,
+    exportItems: data.exportItems ?? [],
+    importItems: data.importItems ?? [],
+    notes: data.notes,
+    riskLevel: data.riskLevel ?? 'LOW',
+  };
+}
+
 // ---- AI: 법령 상세 설명 생성 ----
 export async function generateLawExplanation(
   state: GameState,

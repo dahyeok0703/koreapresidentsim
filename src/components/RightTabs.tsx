@@ -1494,19 +1494,38 @@ function TradeTab() {
   const countries = useGame(s => s.state!.countries);
   const economy = useGame(s => s.state!.economy);
   const issueDecision = useGame(s => s.issueDecision);
+  const tradeCache = useGame(s => s.tradeDetailCache);
+  const generateTradeDetail = useGame(s => s.generateTradeDetail);
+  const busyTradeIds = useGame(s => s.busyTradeIds);
   const busy = useGame(s => s.busy);
   const [pickedId, setPicked] = useState<string | null>('US');
   const [policyModal, setPolicyModal] = useState<{ type: TradePolicyType } | null>(null);
+  const [tradeContinent, setTradeContinent] = useState<Continent | 'ALL'>('ALL');
+  const [tradeFilter, setTradeFilter] = useState('');
+  const [showAll, setShowAll] = useState(false);    // 0 교역도 표시
 
+  // 모든 국가 무역: TRADE_BY_COUNTRY 우선, AI 캐시 다음, Country 폴백
   const countriesWithTrade = countries
-    .map(c => ({ country: c, profile: TRADE_BY_COUNTRY[c.id] }))
-    .filter(x => x.profile)
-    .sort((a, b) => (b.profile.totalExportUSD + b.profile.totalImportUSD) - (a.profile.totalExportUSD + a.profile.totalImportUSD));
+    .map(c => {
+      const profile = tradeCache[c.id] ?? TRADE_BY_COUNTRY[c.id] ?? null;
+      // Country.tradeVolumeUSD (억$/연) → 백만$, 균등 분할 (실제 비율 불명)
+      const fallbackTotalM = c.tradeVolumeUSD * 100;
+      const fallbackExport = Math.round(fallbackTotalM * 0.5);
+      const fallbackImport = fallbackTotalM - fallbackExport;
+      const totalExport = profile?.totalExportUSD ?? fallbackExport;
+      const totalImport = profile?.totalImportUSD ?? fallbackImport;
+      return { country: c, profile, totalExport, totalImport, hasDetail: !!profile, hasItemDetail: !!(profile?.exportItems?.length || profile?.importItems?.length) };
+    })
+    .filter(x => (showAll || x.totalExport + x.totalImport > 0))
+    .filter(x => tradeContinent === 'ALL' || x.country.continent === tradeContinent)
+    .filter(x => !tradeFilter || x.country.name.includes(tradeFilter) || x.country.id.includes(tradeFilter))
+    .sort((a, b) => (b.totalExport + b.totalImport) - (a.totalExport + a.totalImport));
 
-  const totalExport = countriesWithTrade.reduce((a, x) => a + x.profile.totalExportUSD, 0);
-  const totalImport = countriesWithTrade.reduce((a, x) => a + x.profile.totalImportUSD, 0);
-
-  const picked = countriesWithTrade.find(x => x.country.id === pickedId);
+  const totalExport = countriesWithTrade.reduce((a, x) => a + x.totalExport, 0);
+  const totalImport = countriesWithTrade.reduce((a, x) => a + x.totalImport, 0);
+  const picked = countriesWithTrade.find(x => x.country.id === pickedId)
+    ?? (pickedId ? { country: countries.find(c => c.id === pickedId)!, profile: null as any, totalExport: 0, totalImport: 0, hasDetail: false, hasItemDetail: false } : null);
+  const isPickedBusy = pickedId ? busyTradeIds.has(pickedId) : false;
 
   const riskColor: Record<string, string> = {
     LOW: 'text-emerald-300 border-emerald-800 bg-emerald-900/30',
@@ -1520,7 +1539,7 @@ function TradeTab() {
       <Panel title="대한민국 무역 종합">
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-slate-950/60 border border-slate-800 rounded p-2 text-center">
-            <div className="text-[10px] text-slate-400">총 수출 (주요 27개국)</div>
+            <div className="text-[10px] text-slate-400">총 수출 ({countriesWithTrade.length}개국)</div>
             <div className="text-base font-mono text-emerald-300">${fmtInt(totalExport)}M</div>
           </div>
           <div className="bg-slate-950/60 border border-slate-800 rounded p-2 text-center">
@@ -1544,18 +1563,31 @@ function TradeTab() {
         </div>
       </Panel>
 
-      <Panel title={`교역 상대국 (${countriesWithTrade.length})`}>
+      <Panel title={`교역 상대국 (${countriesWithTrade.length}/${countries.length})`}>
+        <div className="flex gap-1 flex-wrap mb-2">
+          <button onClick={() => setTradeContinent('ALL')} className={`text-[10px] px-1.5 py-0.5 rounded ${tradeContinent === 'ALL' ? 'bg-blue-700' : 'bg-slate-800'}`}>전체</button>
+          {(['ASIA','EUROPE','ME','NA','SA','OCEANIA','AFRICA'] as Continent[]).map(c => (
+            <button key={c} onClick={() => setTradeContinent(c)} className={`text-[10px] px-1.5 py-0.5 rounded ${tradeContinent === c ? 'bg-blue-700' : 'bg-slate-800'}`}>{CONTINENT_NAME[c]}</button>
+          ))}
+        </div>
+        <div className="flex gap-1 mb-2">
+          <input className="input flex-1 text-xs" placeholder="국가명·코드 검색" value={tradeFilter} onChange={e => setTradeFilter(e.target.value)} />
+          <button onClick={() => setShowAll(!showAll)} className={`text-[10px] px-2 rounded ${showAll ? 'bg-emerald-700 text-white' : 'bg-slate-800'}`}>
+            {showAll ? '교역 0국 포함' : '교역 있는 국가만'}
+          </button>
+        </div>
         <div className="space-y-1 max-h-[420px] overflow-y-auto pr-1">
-          {countriesWithTrade.map(({ country, profile }) => {
-            const bal = profile.totalExportUSD - profile.totalImportUSD;
-            const total = profile.totalExportUSD + profile.totalImportUSD;
+          {countriesWithTrade.map(({ country, profile, totalExport, totalImport, hasItemDetail }) => {
+            const bal = totalExport - totalImport;
+            const total = totalExport + totalImport;
             return (
               <button key={country.id} onClick={() => setPicked(country.id)}
                 className={`w-full text-left bg-slate-950/40 border rounded p-1.5 hover:border-blue-500 ${pickedId === country.id ? 'border-blue-500' : 'border-slate-800'}`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className="text-sm font-semibold truncate">{country.flag} {country.name}</span>
-                    <Chip color={riskColor[profile.riskLevel]}>{profile.riskLevel}</Chip>
+                    {profile && <Chip color={riskColor[profile.riskLevel]}>{profile.riskLevel}</Chip>}
+                    {hasItemDetail && <Chip color="text-emerald-300 border-emerald-800 bg-emerald-900/30">📊 상세</Chip>}
                     <span className={`text-[10px] ${country.relation >= 0 ? 'text-emerald-300' : 'text-red-300'} font-mono`}>관계 {country.relation > 0 ? '+' : ''}{country.relation}</span>
                   </div>
                   <span className="text-[10px] font-mono shrink-0">
@@ -1563,8 +1595,8 @@ function TradeTab() {
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-1 mt-0.5 text-[10px]">
-                  <div className="text-emerald-300/80">수출 ${fmtInt(profile.totalExportUSD)}M</div>
-                  <div className="text-red-300/80">수입 ${fmtInt(profile.totalImportUSD)}M</div>
+                  <div className="text-emerald-300/80">수출 ${fmtInt(totalExport)}M</div>
+                  <div className="text-red-300/80">수입 ${fmtInt(totalImport)}M</div>
                   <div className={bal >= 0 ? 'text-emerald-300' : 'text-red-300'}>
                     수지 {bal > 0 ? '+' : ''}${fmtInt(bal)}M
                   </div>
@@ -1572,70 +1604,94 @@ function TradeTab() {
               </button>
             );
           })}
+          {countriesWithTrade.length === 0 && (
+            <div className="text-[11px] text-slate-500 text-center py-3">조건에 맞는 국가가 없습니다.</div>
+          )}
         </div>
       </Panel>
 
       {picked && (
-        <Panel title={`${picked.country.flag} ${picked.country.name} 무역 상세`}>
+        <Panel title={`${picked.country.flag} ${picked.country.name} 무역 상세`} right={
+          !picked.hasItemDetail && (
+            <button onClick={() => generateTradeDetail(picked.country.id)} disabled={isPickedBusy}
+              className="text-[10px] bg-blue-700 hover:bg-blue-600 text-white px-2 py-0.5 rounded disabled:opacity-40">
+              {isPickedBusy ? '🤖 분석 중…' : '🤖 AI 상세 분석'}
+            </button>
+          )
+        }>
           <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-            <Stat label="총 교역액"  value={`$${fmtInt(picked.profile.totalExportUSD + picked.profile.totalImportUSD)}M`} />
-            <Stat label="무역수지"   value={`$${fmtInt(picked.profile.totalExportUSD - picked.profile.totalImportUSD)}M`}
-              color={picked.profile.totalExportUSD - picked.profile.totalImportUSD >= 0 ? 'text-emerald-300' : 'text-red-300'} />
-            <Stat label="의존도 리스크" value={picked.profile.riskLevel}
-              color={picked.profile.riskLevel === 'CRITICAL' ? 'text-red-400' : picked.profile.riskLevel === 'HIGH' ? 'text-orange-300' : picked.profile.riskLevel === 'MED' ? 'text-yellow-300' : 'text-emerald-300'} />
+            <Stat label="총 교역액"  value={`$${fmtInt(picked.totalExport + picked.totalImport)}M`} />
+            <Stat label="무역수지"   value={`$${fmtInt(picked.totalExport - picked.totalImport)}M`}
+              color={picked.totalExport - picked.totalImport >= 0 ? 'text-emerald-300' : 'text-red-300'} />
+            {picked.profile && (
+              <Stat label="의존도 리스크" value={picked.profile.riskLevel}
+                color={picked.profile.riskLevel === 'CRITICAL' ? 'text-red-400' : picked.profile.riskLevel === 'HIGH' ? 'text-orange-300' : picked.profile.riskLevel === 'MED' ? 'text-yellow-300' : 'text-emerald-300'} />
+            )}
             <Stat label="FTA"        value={picked.country.hasFTA ? '체결' : '없음'} />
             <Stat label="관계점수"   value={`${picked.country.relation > 0 ? '+' : ''}${picked.country.relation}`} />
             <Stat label="신뢰도"     value={`${picked.country.trustLevel}/100`} />
           </div>
-          {picked.profile.notes && (
+          {picked.profile?.notes && (
             <div className="text-[10px] text-yellow-300/80 mt-2 bg-yellow-950/20 border border-yellow-900 rounded px-2 py-1">
               💡 {picked.profile.notes}
             </div>
           )}
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <div>
-              <div className="text-[10px] text-emerald-300 font-semibold mb-1">
-                🚢 한국 → {picked.country.name} 수출 ${fmtInt(picked.profile.totalExportUSD)}M
-              </div>
-              <div className="space-y-1">
-                {picked.profile.exportItems.length === 0 && <div className="text-[10px] text-slate-500">교역 없음</div>}
-                {picked.profile.exportItems.map((it: any, i: number) => (
-                  <div key={i} className="bg-slate-950/50 border border-slate-800 rounded p-1.5">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-slate-200 truncate">{it.category}</span>
-                      <span className="font-mono text-emerald-300 shrink-0">${fmtInt(it.valueUSD)}M</span>
-                    </div>
-                    {it.share && (
-                      <div className="bar-bg h-1 mt-0.5">
-                        <div className="bar-fill bg-emerald-500" style={{ width: `${it.share}%` }} />
+          {!picked.hasItemDetail && picked.totalExport + picked.totalImport > 0 && (
+            <div className="text-[11px] text-slate-400 mt-2 bg-slate-950/40 border border-slate-700 rounded p-2">
+              ℹ️ 품목별 세부 데이터는 등록되지 않았습니다. 우측 상단 "🤖 AI 상세 분석" 버튼으로 분석할 수 있습니다.
+            </div>
+          )}
+          {!picked.hasItemDetail && picked.totalExport + picked.totalImport === 0 && (
+            <div className="text-[11px] text-slate-500 mt-2 text-center py-2">
+              교역이 거의 없거나 데이터가 없는 국가입니다.
+            </div>
+          )}
+          {picked.hasItemDetail && (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <div>
+                <div className="text-[10px] text-emerald-300 font-semibold mb-1">
+                  🚢 한국 → {picked.country.name} 수출 ${fmtInt(picked.totalExport)}M
+                </div>
+                <div className="space-y-1">
+                  {picked.profile!.exportItems.length === 0 && <div className="text-[10px] text-slate-500">교역 없음</div>}
+                  {picked.profile!.exportItems.map((it: any, i: number) => (
+                    <div key={i} className="bg-slate-950/50 border border-slate-800 rounded p-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-200 truncate">{it.category}</span>
+                        <span className="font-mono text-emerald-300 shrink-0">${fmtInt(it.valueUSD)}M</span>
                       </div>
-                    )}
-                  </div>
-                ))}
+                      {it.share && (
+                        <div className="bar-bg h-1 mt-0.5">
+                          <div className="bar-fill bg-emerald-500" style={{ width: `${it.share}%` }} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-red-300 font-semibold mb-1">
+                  🛳️ {picked.country.name} → 한국 수입 ${fmtInt(picked.totalImport)}M
+                </div>
+                <div className="space-y-1">
+                  {picked.profile!.importItems.length === 0 && <div className="text-[10px] text-slate-500">교역 없음</div>}
+                  {picked.profile!.importItems.map((it: any, i: number) => (
+                    <div key={i} className="bg-slate-950/50 border border-slate-800 rounded p-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-200 truncate">{it.category}</span>
+                        <span className="font-mono text-red-300 shrink-0">${fmtInt(it.valueUSD)}M</span>
+                      </div>
+                      {it.share && (
+                        <div className="bar-bg h-1 mt-0.5">
+                          <div className="bar-fill bg-red-500" style={{ width: `${it.share}%` }} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-            <div>
-              <div className="text-[10px] text-red-300 font-semibold mb-1">
-                🛳️ {picked.country.name} → 한국 수입 ${fmtInt(picked.profile.totalImportUSD)}M
-              </div>
-              <div className="space-y-1">
-                {picked.profile.importItems.length === 0 && <div className="text-[10px] text-slate-500">교역 없음</div>}
-                {picked.profile.importItems.map((it: any, i: number) => (
-                  <div key={i} className="bg-slate-950/50 border border-slate-800 rounded p-1.5">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-slate-200 truncate">{it.category}</span>
-                      <span className="font-mono text-red-300 shrink-0">${fmtInt(it.valueUSD)}M</span>
-                    </div>
-                    {it.share && (
-                      <div className="bar-bg h-1 mt-0.5">
-                        <div className="bar-fill bg-red-500" style={{ width: `${it.share}%` }} />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          )}
           <div className="mt-3 pt-2 border-t border-slate-800">
             <div className="text-[10px] text-slate-500 mb-1">⚙️ 무역 정책 (세부 설정 모달)</div>
             <div className="grid grid-cols-2 gap-1">
@@ -1657,7 +1713,16 @@ function TradeTab() {
         </Panel>
       )}
       {policyModal && picked && (
-        <TradePolicyModal country={picked.country} profile={picked.profile} type={policyModal.type} onClose={() => setPolicyModal(null)} />
+        <TradePolicyModal country={picked.country}
+          profile={picked.profile ?? {
+            countryId: picked.country.id,
+            totalExportUSD: picked.totalExport,
+            totalImportUSD: picked.totalImport,
+            exportItems: [{ category: '기타', valueUSD: picked.totalExport }],
+            importItems: [{ category: '기타', valueUSD: picked.totalImport }],
+            riskLevel: 'LOW' as const,
+          }}
+          type={policyModal.type} onClose={() => setPolicyModal(null)} />
       )}
     </>
   );

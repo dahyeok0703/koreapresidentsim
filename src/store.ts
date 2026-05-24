@@ -31,7 +31,7 @@ export interface DiplomaticEncounter {
 import { MINISTRY_NAMES } from './data/ministries';
 import {
   advanceTurn, askAdvisor, evaluateDecision, applyDecisionResult, resolveEventChoice,
-  askForeignLeader, finalizeDiplomaticEncounter, generateLawExplanation,
+  askForeignLeader, finalizeDiplomaticEncounter, generateLawExplanation, generateTradeProfile,
 } from './engine/engine';
 import { applyEffects } from './engine/effects';
 
@@ -120,6 +120,11 @@ interface UIState {
 
   // 행정부 일괄 자동 임명
   autoAppointAll: () => void;
+
+  // 무역 상세 (AI 분석 캐시)
+  tradeDetailCache: Record<string, import('./data/trade').TradeProfile>;
+  generateTradeDetail: (countryId: string) => Promise<void>;
+  busyTradeIds: Set<string>;
 }
 
 export const useGame = create<UIState>((set, get) => ({
@@ -132,6 +137,26 @@ export const useGame = create<UIState>((set, get) => ({
   encounter: null,
   busyLawIds: new Set(),
   user: loadStoredUser(),
+  tradeDetailCache: {},
+  busyTradeIds: new Set(),
+
+  async generateTradeDetail(countryId) {
+    const s = get().state;
+    if (!s) return;
+    const bs = new Set(get().busyTradeIds);
+    bs.add(countryId);
+    set({ busyTradeIds: bs });
+    try {
+      const profile = await generateTradeProfile(s, countryId);
+      set({ tradeDetailCache: { ...get().tradeDetailCache, [countryId]: profile } });
+    } catch (e: any) {
+      set({ error: `무역 분석 실패: ${e.message}` });
+    } finally {
+      const bs2 = new Set(get().busyTradeIds);
+      bs2.delete(countryId);
+      set({ busyTradeIds: bs2 });
+    }
+  },
 
   setUser(u) { set({ user: u }); },
   signOut() { signOutGoogle(); set({ user: null }); },
