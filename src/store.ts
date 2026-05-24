@@ -5,6 +5,7 @@ import type {
   WarEngagement, AdminTask
 } from './types/game';
 import { saveCurrent, loadCurrent } from './db/storage';
+import { loadStoredUser, signOutGoogle, type GoogleUser } from './api/googleAuth';
 import { genId, randomKoreanName, NOMINEE_POOL, buildNewTermState } from './data/initialState';
 
 export type EncounterType = 'CALL' | 'SUMMIT' | 'EMERGENCY' | 'SUMMIT_GROUP';
@@ -110,6 +111,11 @@ interface UIState {
   // 법령 AI 설명
   explainLaw: (lawId: string) => Promise<void>;
   busyLawIds: Set<string>;
+
+  // 사용자 (Google 로그인)
+  user: GoogleUser | null;
+  setUser: (u: GoogleUser | null) => void;
+  signOut: () => void;
 }
 
 export const useGame = create<UIState>((set, get) => ({
@@ -121,6 +127,10 @@ export const useGame = create<UIState>((set, get) => ({
   undoStack: [],
   encounter: null,
   busyLawIds: new Set(),
+  user: loadStoredUser(),
+
+  setUser(u) { set({ user: u }); },
+  signOut() { signOutGoogle(); set({ user: null }); },
 
   init(state) { set({ state, undoStack: [] }); saveCurrent(state); },
 

@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { PARTIES } from '../data/parties';
 import { createInitialState } from '../data/initialState';
 import { useGame } from '../store';
-import { listSaves, loadSlot, deleteSlot, type SaveSlot } from '../db/storage';
+import { listSaves, loadSlot, deleteSlot, saveSlot, type SaveSlot } from '../db/storage';
+import { genId } from '../utils/id';
+import LoginModal from './LoginModal';
 import type { PartyId, PresidentProfile, EducationEntry, CareerEntry } from '../types/game';
 
 const PRESETS: Partial<PresidentProfile>[] = [
@@ -59,9 +61,12 @@ const PRESETS: Partial<PresidentProfile>[] = [
 
 export default function SetupScreen() {
   const init = useGame(s => s.init);
+  const user = useGame(s => s.user);
   const [savedSlots, setSavedSlots] = useState<SaveSlot[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(true);
   const [createMode, setCreateMode] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = async () => {
     try {
@@ -80,6 +85,21 @@ export default function SetupScreen() {
     if (!confirm('이 저장 슬롯을 삭제하시겠습니까?')) return;
     await deleteSlot(id);
     refresh();
+  };
+
+  const importJson = async (file: File) => {
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const slot: SaveSlot = data.state
+        ? { ...data, id: genId('save'), updatedAt: new Date().toISOString() }
+        : { id: genId('save'), name: `가져온 게임`, updatedAt: new Date().toISOString(), state: data };
+      if (!slot.state?.president || !slot.state?.clock) throw new Error('유효한 게임 저장 파일이 아닙니다.');
+      await saveSlot(slot);
+      refresh();
+    } catch (e: any) {
+      alert(`파일 가져오기 실패: ${e.message}`);
+    }
   };
 
   const [p, setP] = useState<PresidentProfile>({
@@ -135,11 +155,29 @@ export default function SetupScreen() {
           <p className="text-sm text-slate-400">2025년 6월 4일, 당신은 대한민국 제21대 대통령으로 취임합니다.</p>
         </header>
 
+        {/* === 로그인 / 사용자 === */}
+        <div className="flex items-center justify-end gap-2">
+          {user ? (
+            <button onClick={() => setShowLogin(true)} className="btn flex items-center gap-2 text-xs border-emerald-700">
+              {user.picture && <img src={user.picture} alt="" className="w-5 h-5 rounded-full" referrerPolicy="no-referrer" />}
+              <span>{user.name}</span>
+              <span className="text-emerald-300 text-[10px]">✓ 로그인됨</span>
+            </button>
+          ) : (
+            <button onClick={() => setShowLogin(true)} className="btn text-xs">🔐 Google 로그인</button>
+          )}
+        </div>
+
         {/* === 저장된 게임 불러오기 === */}
         <div className="border border-slate-700 rounded p-3 bg-slate-950/60">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-semibold text-emerald-300">💾 저장된 게임 불러오기</h3>
-            <button onClick={refresh} className="text-[10px] text-blue-300 hover:text-blue-200">새로고침</button>
+            <div className="flex gap-1">
+              <button onClick={() => fileInputRef.current?.click()} className="text-[10px] text-amber-300 hover:text-amber-200">📥 JSON 가져오기</button>
+              <input ref={fileInputRef} type="file" accept=".json,application/json" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) importJson(f); e.target.value=''; }} />
+              <button onClick={refresh} className="text-[10px] text-blue-300 hover:text-blue-200">새로고침</button>
+            </div>
           </div>
           {slotsLoading ? (
             <div className="text-[11px] text-slate-500 text-center py-2">로딩 중...</div>
@@ -388,6 +426,7 @@ export default function SetupScreen() {
         </button>
         </>)}
       </div>
+      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </div>
   );
 }

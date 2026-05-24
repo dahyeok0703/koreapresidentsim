@@ -720,6 +720,7 @@ export interface Settings {
   autoEvents: boolean;
   eventsPerTurn: number;
   language: 'ko';
+  googleClientId?: string;     // Google OAuth Client ID (선택)
 }
 
 // ---------------- 전체 상태 ----------------

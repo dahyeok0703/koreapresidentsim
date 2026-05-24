@@ -1,8 +1,9 @@
 import { useGame } from '../store';
 import { useState } from 'react';
-import { Settings as SettingsIcon, Save, RotateCcw, PlayCircle, FastForward, Undo2 } from 'lucide-react';
+import { Settings as SettingsIcon, Save, RotateCcw, PlayCircle, FastForward, Undo2, LogIn, LogOut } from 'lucide-react';
 import SettingsModal from './SettingsModal';
 import SaveLoadModal from './SaveLoadModal';
+import LoginModal from './LoginModal';
 
 export default function TopBar() {
   const state = useGame(s => s.state)!;
@@ -13,6 +14,8 @@ export default function TopBar() {
   const undoStackLen = useGame(s => s.undoStack.length);
   const [showSettings, setShowSettings] = useState(false);
   const [showSaves, setShowSaves] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const user = useGame(s => s.user);
 
   const party = state.parties.find(p => p.id === state.president.party);
   const yearsDone = (state.clock.daysInOffice / 365).toFixed(2);
@@ -80,12 +83,25 @@ export default function TopBar() {
         <button onClick={() => setShowSettings(true)} className="btn flex items-center gap-1 text-xs">
           <SettingsIcon size={14} /> 설정
         </button>
+        <button onClick={() => setShowLogin(true)} className={`btn flex items-center gap-1 text-xs ${user ? 'border-emerald-700' : ''}`}>
+          {user ? (
+            <>
+              {user.picture
+                ? <img src={user.picture} alt="" className="w-4 h-4 rounded-full" referrerPolicy="no-referrer" />
+                : <LogIn size={14} />}
+              <span className="max-w-[80px] truncate">{user.name}</span>
+            </>
+          ) : (
+            <><LogIn size={14} /> 로그인</>
+          )}
+        </button>
         <button onClick={() => { if (confirm('현재 게임을 초기화하고 새로 시작하시겠습니까?')) reset(); }} className="btn text-xs">
           <RotateCcw size={14} />
         </button>
       </div>
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showSaves && <SaveLoadModal onClose={() => setShowSaves(false)} />}
+      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </div>
     </>
   );
