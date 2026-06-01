@@ -9,6 +9,7 @@ import { CONFIRMATION_REQUIRED, NOMINEE_POOL } from '../data/adminBodies';
 import { TRADE_BY_COUNTRY } from '../data/trade';
 import type { SubRegion } from '../data/subRegions';
 import { SubRegionDetailModal, TradePolicyModal, type TradePolicyType } from './DetailModals';
+import NotesTab from './NotesTab';
 import type { Continent, MinistryId, BuildingCategory, RegionId, AllianceStatus, WeaponEntry } from '../types/game';
 
 const TABS = [
@@ -26,6 +27,7 @@ const TABS = [
   { id: 'COMPANIES',    label: '기업',     icon: '🏭' },
   { id: 'TRADE',        label: '무역',     icon: '🚢' },
   { id: 'CULTURE',      label: '문화',     icon: '🎭' },
+  { id: 'NOTES',        label: '노트',     icon: '🗒️' },
   { id: 'ELECTIONS',    label: '선거',     icon: '🗳️' },
   { id: 'LAWS',         label: '법령',     icon: '📚' },
   { id: 'EVENTS',       label: '사건',     icon: '📜' },
@@ -67,6 +69,7 @@ export default function RightTabs() {
         {tab === 'COMPANIES' && <CompaniesTab />}
         {tab === 'TRADE'     && <TradeTab />}
         {tab === 'CULTURE'   && <CultureTab />}
+        {tab === 'NOTES'     && <NotesTab />}
         {tab === 'ELECTIONS' && <ElectionsTab />}
         {tab === 'LAWS'      && <LawsTab />}
         {tab === 'EVENTS'    && <EventsTab />}
@@ -660,6 +663,9 @@ function DiplomacyTab() {
             <div className="mt-2 text-[10px] text-slate-500">최근 이슈</div>
             <ul className="text-[11px] text-slate-300 mt-0.5 space-y-0.5">{picked.recentEvents.map((r, i) => <li key={i}>· {r}</li>)}</ul>
           </>)}
+
+          <CountryQuickEdit countryId={picked.id} />
+
           <div className="mt-3 pt-2 border-t border-slate-800">
             <div className="text-[10px] text-slate-500 mb-1">⚡ 실시간 외교 (중앙 모달에서 직접 대화)</div>
             <div className="grid grid-cols-2 gap-1">
@@ -694,6 +700,65 @@ function DiplomacyTab() {
         </Panel>
       )}
     </>
+  );
+}
+
+// ============ 국가 인라인 빠른 편집 (외교 대시보드) ============
+function CountryQuickEdit({ countryId }: { countryId: string }) {
+  const country = useGame(s => s.state!.countries.find(c => c.id === countryId))!;
+  const updateCountry = useGame(s => s.updateCountry);
+  const [memo, setMemo] = useState(country.userMemo ?? '');
+  const [memoDirty, setMemoDirty] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [leader, setLeader] = useState(country.leader);
+  const [leaderTitle, setLeaderTitle] = useState(country.leaderTitle);
+  const [relation, setRelation] = useState(country.relation);
+  const [trust, setTrust] = useState(country.trustLevel);
+
+  const saveMemo = () => {
+    updateCountry(countryId, { userMemo: memo });
+    setMemoDirty(false);
+  };
+  const saveQuick = () => {
+    updateCountry(countryId, { leader, leaderTitle, relation, trustLevel: trust });
+    setEditing(false);
+  };
+
+  return (
+    <div className="mt-3 pt-2 border-t border-slate-800 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-slate-500">🗒️ 내 메모 + 빠른 수정</span>
+        <button onClick={() => setEditing(!editing)} className="text-[10px] text-blue-300 hover:text-blue-200">
+          {editing ? '닫기' : '관계·지도자 수정'}
+        </button>
+      </div>
+      {editing && (
+        <div className="bg-slate-950/40 border border-slate-800 rounded p-2 space-y-1.5">
+          <div className="grid grid-cols-2 gap-1">
+            <input className="input text-xs" placeholder="지도자" value={leader} onChange={e => setLeader(e.target.value)} />
+            <input className="input text-xs" placeholder="직위" value={leaderTitle} onChange={e => setLeaderTitle(e.target.value)} />
+          </div>
+          <div className="text-[10px] text-slate-400">
+            관계: <span className={`font-mono ${relation >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{relation > 0 ? '+' : ''}{relation}</span>
+            <input type="range" min={-100} max={100} value={relation} onChange={e => setRelation(Number(e.target.value))} className="w-full" />
+          </div>
+          <div className="text-[10px] text-slate-400">
+            신뢰도: <span className="font-mono">{trust}</span>
+            <input type="range" min={0} max={100} value={trust} onChange={e => setTrust(Number(e.target.value))} className="w-full" />
+          </div>
+          <button onClick={saveQuick} className="btn-primary w-full text-[11px]">저장</button>
+        </div>
+      )}
+      <textarea
+        value={memo}
+        onChange={e => { setMemo(e.target.value); setMemoDirty(true); }}
+        placeholder="이 국가에 대한 자유 메모... (관찰·분석·기억해둘 점)"
+        className="input w-full text-xs h-20 resize-none"
+      />
+      {memoDirty && (
+        <button onClick={saveMemo} className="btn-primary w-full text-[11px]">메모 저장</button>
+      )}
+    </div>
   );
 }
 
@@ -2040,18 +2105,47 @@ function LawsTab() {
 // ============ 사건 로그 ============
 function EventsTab() {
   const events = useGame(s => s.state!.events);
+  const today = useGame(s => s.state!.clock.currentDate);
   const select = useGame(s => s.selectEvent);
   const dismiss = useGame(s => s.dismissEvent);
-  const [tab, setTab] = useState<'PENDING' | 'ALL'>('PENDING');
+  const addManualEvent = useGame(s => s.addManualEvent);
+  const [tab, setTab] = useState<'PENDING' | 'ALL'>('ALL');
+  const [composing, setComposing] = useState(false);
+  const [draft, setDraft] = useState({ headline: '', body: '', source: '직접 작성', category: 'POLITICS' as any, severity: 'INFO' as any });
   const list = tab === 'PENDING' ? events.filter(e => !e.resolved) : events;
   return (
     <Panel title={`사건 / 뉴스 (총 ${events.length}건)`}
       right={
         <div className="flex gap-1">
+          <button onClick={() => setComposing(!composing)} className="text-[10px] bg-blue-700 hover:bg-blue-600 text-white px-2 py-0.5 rounded">＋ 직접 추가</button>
           <button onClick={() => setTab('PENDING')} className={`text-[10px] px-1.5 py-0.5 rounded ${tab === 'PENDING' ? 'bg-blue-700 text-white' : 'bg-slate-800 text-slate-400'}`}>대기</button>
           <button onClick={() => setTab('ALL')} className={`text-[10px] px-1.5 py-0.5 rounded ${tab === 'ALL' ? 'bg-blue-700 text-white' : 'bg-slate-800 text-slate-400'}`}>전체</button>
         </div>
       }>
+      {composing && (
+        <div className="bg-slate-950/60 border border-blue-700 rounded p-2 mb-2 space-y-1.5">
+          <input className="input w-full text-xs" placeholder="헤드라인"
+            value={draft.headline} onChange={e => setDraft({ ...draft, headline: e.target.value })} />
+          <textarea className="input w-full text-xs h-16 resize-none" placeholder="본문 (자유 작성)"
+            value={draft.body} onChange={e => setDraft({ ...draft, body: e.target.value })} />
+          <div className="grid grid-cols-3 gap-1">
+            <select className="input text-xs" value={draft.category} onChange={e => setDraft({ ...draft, category: e.target.value as any })}>
+              {['POLITICS','ECONOMY','DIPLOMACY','SECURITY','SOCIAL','DISASTER','SCANDAL','CULTURE','TECH','HEALTH','NK','LEGAL','INTERNATIONAL','SNS','MEDIA','WAR','INFRA'].map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select className="input text-xs" value={draft.severity} onChange={e => setDraft({ ...draft, severity: e.target.value as any })}>
+              {['INFO','MINOR','MODERATE','MAJOR','CRITICAL'].map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <input className="input text-xs" placeholder="출처"
+              value={draft.source} onChange={e => setDraft({ ...draft, source: e.target.value })} />
+          </div>
+          <button onClick={() => {
+            if (!draft.headline.trim()) return;
+            addManualEvent({ ...draft, date: today });
+            setDraft({ headline: '', body: '', source: '직접 작성', category: 'POLITICS' as any, severity: 'INFO' as any });
+            setComposing(false);
+          }} className="btn-primary w-full text-xs">+ 사건 추가</button>
+        </div>
+      )}
       <div className="space-y-1.5">
         {list.length === 0 && <div className="text-xs text-slate-500 text-center py-3">표시할 이벤트가 없습니다.</div>}
         {list.map(ev => (

@@ -125,6 +125,16 @@ interface UIState {
   tradeDetailCache: Record<string, import('./data/trade').TradeProfile>;
   generateTradeDetail: (countryId: string) => Promise<void>;
   busyTradeIds: Set<string>;
+
+  // 사용자 노트 (대시보드 노트북)
+  addNote: (note: Omit<import('./types/game').UserNote, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateNote: (id: string, patch: Partial<import('./types/game').UserNote>) => void;
+  deleteNote: (id: string) => void;
+  pinNote: (id: string, pinned: boolean) => void;
+
+  // 수동 편집 (대시보드용)
+  updateCountry: (countryId: string, patch: Partial<import('./types/game').Country>) => void;
+  addManualEvent: (event: Omit<import('./types/game').GameEvent, 'id' | 'resolved'>) => void;
 }
 
 export const useGame = create<UIState>((set, get) => ({
@@ -139,6 +149,40 @@ export const useGame = create<UIState>((set, get) => ({
   user: loadStoredUser(),
   tradeDetailCache: {},
   busyTradeIds: new Set(),
+
+  addNote(note) {
+    get().patch(s => {
+      const now = new Date().toISOString();
+      const n = { ...note, id: genId('note'), createdAt: now, updatedAt: now };
+      return { ...s, notes: [n, ...s.notes] };
+    });
+  },
+  updateNote(id, patch) {
+    get().patch(s => ({
+      ...s,
+      notes: s.notes.map(n => n.id === id ? { ...n, ...patch, updatedAt: new Date().toISOString() } : n),
+    }));
+  },
+  deleteNote(id) {
+    get().patch(s => ({ ...s, notes: s.notes.filter(n => n.id !== id) }));
+  },
+  pinNote(id, pinned) {
+    get().patch(s => ({ ...s, notes: s.notes.map(n => n.id === id ? { ...n, pinned, updatedAt: new Date().toISOString() } : n) }));
+  },
+
+  updateCountry(countryId, patch) {
+    get().patch(s => ({
+      ...s,
+      countries: s.countries.map(c => c.id === countryId ? { ...c, ...patch } : c),
+    }));
+  },
+
+  addManualEvent(event) {
+    get().patch(s => {
+      const evt = { ...event, id: genId('evt'), resolved: true };
+      return { ...s, events: [evt, ...s.events].slice(0, 200) };
+    });
+  },
 
   async generateTradeDetail(countryId) {
     const s = get().state;

@@ -516,6 +516,7 @@ export function createInitialState(p: PresidentProfile, apiKey = '', model = 'gp
     treaties: [],
     laws: KOREAN_LAWS,
     subRegions: buildSubRegions(),
+    notes: [],
   };
 }
 
@@ -641,6 +642,7 @@ export function buildNewTermState(
     treaties: prev.treaties,
     laws: prev.laws,
     subRegions: prev.subRegions,
+    notes: prev.notes,
     // 유지: countries, companies, intlOrgs, international, adminBodies, buildings, parties, regions, elections, cultural, pastTerms, settings
   };
 }

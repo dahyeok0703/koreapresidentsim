@@ -384,6 +384,7 @@ export interface Country {
   recentEvents: string[];
   termEnd?: string;            // 정상 임기 만료 (YYYY-MM-DD)
   successorIndex?: number;     // 후임 풀에서 사용한 인덱스
+  userMemo?: string;           // 사용자 메모 (자유 작성)
 }
 
 // ---------------- 국제기구 ----------------
@@ -760,6 +761,20 @@ export interface GameState {
   treaties: Treaty[];
   laws: import('../data/laws').Law[];
   subRegions: import('../data/subRegions').SubRegion[];
+  notes: UserNote[];
+}
+
+// ---------------- 사용자 노트 (대시보드 노트북) ----------------
+export interface UserNote {
+  id: string;
+  title: string;
+  body: string;                // 자유 텍스트 (단순 줄바꿈 보존)
+  category: '일반' | '분석' | '시나리오' | '일지' | '연대기' | '브리핑';
+  tags: string[];
+  relatedCountries: string[];  // Country.id
+  pinned?: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ---------------- 국제 뉴스 피드 (한국 외 국가들의 능동 행동) ----------------
